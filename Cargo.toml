@@ -1,0 +1,16 @@
+[package]
+name = "discord-logging"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+serenity = { version = "0.12", default-features = false, features = ["client", "gateway", "rustls_backend", "model", "cache"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+toml = "1.1.2"
+serde = { version = "1", features = ["derive"] }
+rand = "0.10.2"
+log = "0.4"
+env_logger = "0.11"
+sqlx = { version =  "0.9.0", features = ["postgres", "uuid"] }
+time = { version = "0.3.53", features = ["macros"]}
+uuid = { version = "1.23.4", features = ["v4"] }

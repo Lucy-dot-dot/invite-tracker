@@ -1,0 +1,30 @@
+services:
+  postgres:
+    image: postgres:18-alpine
+    restart: always
+    shm_size: 128mb
+    env_file:
+      - .env
+    environment:
+      POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256"
+    ports:
+      # Standard way to expose the port on everything
+      # - "5432:5432"
+      # Very verbose way to expose the port on localhost
+      - protocol: tcp
+        mode: host
+        host_ip: 127.0.0.1
+        name: postgres-ipv4
+        published: 5432
+        target: 5432
+    volumes:
+      - postgres_data:/var/lib/postgresql
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U honeypot -d ssh_honeypot" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+volumes:
+  postgres_data: 

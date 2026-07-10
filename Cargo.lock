@@ -397,14 +397,12 @@ version = "0.1.0"
 dependencies = [
  "env_logger",
  "log",
- "rand 0.10.2",
  "serde",
  "serenity",
  "sqlx",
  "time",
  "tokio",
  "toml",
- "uuid",
 ]
 
 [[package]]
@@ -2351,7 +2349,6 @@ version = "1.23.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bf80a72845275afea99e7f2b434723d3bc7e38470fcd1c7ed39a599c73319a53"
 dependencies = [
- "getrandom 0.4.3",
  "js-sys",
  "wasm-bindgen",
 ]

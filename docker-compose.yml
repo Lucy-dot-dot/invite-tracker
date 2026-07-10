@@ -20,11 +20,25 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U honeypot -d ssh_honeypot" ]
+      test: [ "CMD-SHELL", "pg_isready -U discord -d discord" ]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 10s
+
+  discord:
+    build: .
+    # image: ghcr.io/<owner>/discord-logging:latest
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgres://discord:discord@postgres:5432/discord
+    volumes:
+      - ./config.toml:/app/config.toml:ro
 
 volumes:
   postgres_data: 

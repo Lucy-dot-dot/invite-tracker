@@ -1,0 +1,7 @@
+target/
+.git/
+.env
+.idea/
+.claude/
+docker-compose.yml
+requirements.md

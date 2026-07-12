@@ -1,28 +1,17 @@
 use std::collections::{HashMap, HashSet};
-use std::ops::Shr;
 use std::sync::Arc;
 use serde::Deserialize;
-use serenity::all::{ChannelId, Colour, Context, CreateEmbed, CreateEmbedAuthor, CreateEmbedFooter, CreateMessage, Guild, GuildId, InviteCreateEvent, InviteDeleteEvent, Member, Ready, RichInvite, User};
+use serenity::all::{ChannelId, Context, Guild, GuildId, InviteCreateEvent, InviteDeleteEvent, Member, Ready, RichInvite, User};
 use serenity::Client;
 use serenity::prelude::{EventHandler, GatewayIntents};
 use sqlx::{PgPool, Row};
-use time::{OffsetDateTime, UtcOffset};
+use time::{OffsetDateTime};
 
+use crate::datastructures::UsedInvite;
 
+mod messages;
+mod datastructures;
 mod db;
-
-/// Convert a Discord snowflake id into the UTC timestamp at which the entity was created.
-fn snowflake_to_timestamp(discord_id: u64) -> OffsetDateTime {
-    let discord_epoch = OffsetDateTime::new_in_offset(
-        time::Date::from_calendar_date(2015, time::Month::January, 1).unwrap(),
-        time::Time::from_hms(0, 0, 0).unwrap(),
-        UtcOffset::UTC,
-    );
-    // The upper 42 bits are a millisecond timestamp relative to the Discord epoch,
-    // so shifting right by 22 bits yields the milliseconds since 2015-01-01.
-    let millis_since_epoch = discord_id.shr(22) as i64;
-    OffsetDateTime::from_unix_timestamp(discord_epoch.unix_timestamp() + millis_since_epoch / 1000).unwrap()
-}
 
 
 #[derive(Deserialize, Clone, Debug)]
@@ -52,169 +41,6 @@ impl Config {
         std::env::var("DATABASE_URL")
             .unwrap_or_else(|_| "postgres://discord:discord@127.0.0.1:5432/discord".to_string())
     }
-}
-
-/// Everything we need to know about the invite a member used to join.
-struct UsedInvite {
-    code: String,
-    inviter_id: u64,
-    #[allow(dead_code)]
-    inviter_name: String,
-    created_at: i64,
-}
-
-fn build_join_message(new_member: &Member, join_amount: i32, last_known_join: i64, used_invite: Option<&UsedInvite>) -> CreateMessage {
-    let user_id = new_member.user.id.get();
-    let account_created = snowflake_to_timestamp(user_id).unix_timestamp();
-    let now = OffsetDateTime::now_utc().unix_timestamp();
-
-    // Suspicious-join indicators. Each pushes a human-readable reason; if any are present the
-    // embed is recoloured amber and a "Suspicious" field is added so it stands out in the log.
-    const NEW_ACCOUNT_THRESHOLD_SECS: i64 = 24 * 60 * 60;
-    let mut reasons: Vec<String> = Vec::new();
-    if now - account_created < NEW_ACCOUNT_THRESHOLD_SECS {
-        reasons.push(format!("Account younger than 24h (<t:{account_created}:R>)"));
-    }
-    if let Some(until) = new_member.unusual_dm_activity_until {
-        if until.unix_timestamp() > now {
-            let until_ts = until.unix_timestamp();
-            reasons.push(format!("Unusual DM activity flagged (until <t:{until_ts}:F>)"));
-        }
-    }
-    if new_member.user.avatar.is_none() {
-        reasons.push("No avatar set".to_string());
-    }
-    if new_member.user.global_name.is_none() {
-        reasons.push("No display name set".to_string());
-    }
-    let is_suspicious = !reasons.is_empty();
-
-    // Only meaningful on a rejoin: on a first-time join prev_last_join == now, which would
-    // misleadingly render as "just now".
-    let last_known_join_line = if join_amount > 0 {
-        format!("\n*Last known join <t:{last_known_join}:R>*")
-    } else {
-        String::new()
-    };
-
-    let invite_info = match used_invite {
-        Some(inv) => format!(
-            "**Code:** `{code}`\n\
-             **Invited by:** <@{inviter_id}> ({inviter_id})\n\
-             *Created <t:{invite_created}:R>*{last_known_join_line}",
-            code = inv.code,
-            inviter_id = inv.inviter_id,
-            invite_created = inv.created_at,
-            last_known_join_line = last_known_join_line,
-        ),
-        None => "*Could not determine which invite was used.*".to_string(),
-    };
-
-    // `<@id>` renders as a real, clickable user ping (right-click -> ban), not just plain text.
-    let embed_description = format!(
-        "<@{user_id}>\n\n\
-         **Account created:**\n\
-         <t:{account_created}:F>\n\
-         *(<t:{account_created}:R> at time of joining)*\n\n\
-         **Invite Info:**\n\
-         {invite_info}",
-    );
-
-    let avatar_url = new_member.avatar_url().unwrap_or_else(|| new_member.user.face());
-    let embed_author = CreateEmbedAuthor::new(&new_member.user.name).icon_url(&avatar_url);
-    let embed_footer = CreateEmbedFooter::new(format!("JOINED {user_id}"));
-
-    let mut embed = CreateEmbed::new()
-        .author(embed_author)
-        .title("MEMBER JOINED")
-        .color(if is_suspicious {
-            Colour::new(0xFFA500)
-        } else {
-            Colour::new(0x00FF00)
-        })
-        .description(embed_description)
-        .thumbnail(&avatar_url)
-        .field("Display Name", new_member.display_name().to_string(), true)
-        .field("Username", new_member.user.name.clone(), true)
-        .field("Rejoins", join_amount.to_string(), true);
-
-    if is_suspicious {
-        embed = embed.field("Suspicious", reasons.join("\n"), false);
-    }
-
-    let embed = embed.footer(embed_footer);
-
-    CreateMessage::new().embed(embed)
-}
-
-fn build_leave_message(user: &User, last_join: Option<i64>) -> CreateMessage {
-    let user_id = user.id.get();
-
-    // Relative time from the last join renders as "x months ago", i.e. how long they were a member.
-    let membership = match last_join {
-        Some(ts) => format!("Joined <t:{ts}:F>\n*(<t:{ts}:R>)*"),
-        None => "*Unknown - no join record found.*".to_string(),
-    };
-
-    let embed_description = format!(
-        "<@{user_id}> ({user_id})\n\n\
-         **Member since:**\n{membership}",
-    );
-
-    let avatar_url = user.face();
-    let embed_author = CreateEmbedAuthor::new(&user.name).icon_url(&avatar_url);
-    let embed_footer = CreateEmbedFooter::new(format!("LEFT {user_id}"));
-
-    let embed = CreateEmbed::new()
-        .author(embed_author)
-        .title("MEMBER LEFT")
-        .color(Colour::new(0xFF0000))
-        .description(embed_description)
-        .thumbnail(&avatar_url)
-        .footer(embed_footer);
-
-    CreateMessage::new().embed(embed)
-}
-
-fn build_invite_message(data: &InviteCreateEvent) -> CreateMessage {
-    let (inviter_id, inviter_name, avatar_url) = match &data.inviter {
-        Some(user) => (user.id.get(), user.name.clone(), Some(user.face())),
-        None => (0, "unknown".to_string(), None),
-    };
-
-    let created = data.created_at.unix_timestamp();
-    let expiry = if data.max_age == 0 {
-        "**Expires:** Never".to_string()
-    } else {
-        let expires_at = created + data.max_age as i64;
-        format!("**Expires:** <t:{expires_at}:F> (<t:{expires_at}:R>)")
-    };
-
-    let embed_description = format!(
-        "<@{inviter_id}>\n\n\
-         **Code:** `{code}`\n\
-         **Created:** <t:{created}:F>\n\
-         {expiry}",
-        code = data.code,
-    );
-
-    let mut embed_author = CreateEmbedAuthor::new(&inviter_name);
-    if let Some(url) = &avatar_url {
-        embed_author = embed_author.icon_url(url);
-    }
-    let embed_footer = CreateEmbedFooter::new(format!("INV_CREATED {inviter_id}"));
-
-    let mut embed = CreateEmbed::new()
-        .author(embed_author)
-        .title("INVITE CREATED")
-        .color(Colour::new(0x00AAFF))
-        .description(embed_description)
-        .footer(embed_footer);
-    if let Some(url) = &avatar_url {
-        embed = embed.thumbnail(url);
-    }
-
-    CreateMessage::new().embed(embed)
 }
 
 struct Handler {
@@ -279,6 +105,7 @@ impl Handler {
             if invite.uses as i64 > prev_uses {
                 used = Some(UsedInvite {
                     code: invite.code.clone(),
+                    uses: invite.uses,
                     inviter_id: invite.inviter.as_ref().map(|u| u.id.get()).unwrap_or(0),
                     inviter_name: invite
                         .inviter
@@ -301,6 +128,7 @@ impl Handler {
                 if vanished && exhausted {
                     used = Some(UsedInvite {
                         code: code.clone(),
+                        uses: *uses as u64,
                         inviter_id: *inviter as u64,
                         inviter_name: "unknown".to_string(),
                         created_at: *created_at,
@@ -377,7 +205,7 @@ impl EventHandler for Handler {
         let used_invite = self.sync_invites_find_used(&ctx, new_member.guild_id).await;
 
         let channel = ChannelId::new(self.config.target_channel);
-        let msg = build_join_message(&new_member, join_amount, prev_last_join, used_invite.as_ref());
+        let msg = messages::build_join_message(&new_member, join_amount, prev_last_join, used_invite.as_ref());
         if let Err(e) = channel.send_message(&ctx, msg).await {
             log::error!("Unable to send join message to channel {}: {}", channel, e);
         }
@@ -392,17 +220,32 @@ impl EventHandler for Handler {
         }
     }
 
-    async fn guild_member_removal(&self, ctx: Context, _guild_id: GuildId, user: User, _member: Option<Member>) {
+    async fn guild_member_removal(&self, ctx: Context, _guild_id: GuildId, user: User, member: Option<Member>) {
         log::debug!("Member {} left", user.name);
 
-        let last_join: Option<i64> = sqlx::query_scalar("SELECT last_join FROM joined_member WHERE user_id = $1")
+        let mut last_join: Option<i64> = sqlx::query_scalar("SELECT last_join FROM joined_member WHERE user_id = $1")
             .bind(user.id.get() as i64)
             .fetch_optional(&self.pool)
             .await
             .unwrap_or(None);
 
+        if last_join.is_none() &&
+          let Some(member) = member &&
+          let Some(joined_at) = member.joined_at {
+            if let Err(e) = sqlx::query(
+                "INSERT INTO joined_member (last_join, user_id, join_amount) VALUES ($1, $2, 0)")
+                .bind(joined_at.unix_timestamp())
+                .bind(user.id.get() as i64)
+                .fetch_one(&self.pool)
+                .await
+            {
+                log::error!("Failed to insert user into database: {}", e);
+            }
+            last_join = Some(joined_at.unix_timestamp());
+        }
+
         let channel = ChannelId::new(self.config.target_channel);
-        let msg = build_leave_message(&user, last_join);
+        let msg = messages::build_leave_message(&user, last_join);
         if let Err(e) = channel.send_message(&ctx, msg).await {
             log::error!("Unable to send leave message to channel {}: {}", channel, e);
         }
@@ -442,7 +285,7 @@ impl EventHandler for Handler {
         }
 
         let channel = ChannelId::new(self.config.target_channel);
-        let msg = build_invite_message(&data);
+        let msg = messages::build_invite_message(&data);
         if let Err(e) = channel.send_message(&ctx, msg).await {
             log::error!("Unable to send invite message to channel {}: {}", channel, e);
         }

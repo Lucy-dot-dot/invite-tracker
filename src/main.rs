@@ -105,6 +105,7 @@ impl Handler {
             if invite.uses as i64 > prev_uses {
                 used = Some(UsedInvite {
                     code: invite.code.clone(),
+                    uses: invite.uses,
                     inviter_id: invite.inviter.as_ref().map(|u| u.id.get()).unwrap_or(0),
                     inviter_name: invite
                         .inviter
@@ -127,6 +128,7 @@ impl Handler {
                 if vanished && exhausted {
                     used = Some(UsedInvite {
                         code: code.clone(),
+                        uses: *uses as u64,
                         inviter_id: *inviter as u64,
                         inviter_name: "unknown".to_string(),
                         created_at: *created_at,

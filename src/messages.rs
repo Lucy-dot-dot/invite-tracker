@@ -40,13 +40,14 @@ pub fn build_join_message(new_member: &Member, join_amount: i32, last_known_join
 
     let invite_info = match used_invite {
         Some(inv) => format!(
-            "**Code:** `{code}`\n\
+            "**Code:** `{code}` ({n_uses} uses)\n\
              **Invited by:** <@{inviter_id}> ({inviter_name})\n\
              *Created <t:{invite_created}:R>*",
             code = inv.code,
             inviter_id = inv.inviter_id,
             inviter_name = inv.inviter_name,
             invite_created = inv.created_at,
+            n_uses = inv.uses
         ),
         None => "*Could not determine which invite was used.*".to_string(),
     };

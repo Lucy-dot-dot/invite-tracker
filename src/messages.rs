@@ -21,7 +21,7 @@ pub fn build_join_message(new_member: &Member, join_amount: i32, last_known_join
     if let Some(until) = new_member.unusual_dm_activity_until {
         if until.unix_timestamp() > now {
             let until_ts = until.unix_timestamp();
-            reasons.push(format!("Unusual DM activity flagged (until <t:{until_ts}:F>)"));
+            reasons.push(format!("Unusual DM activity flagged (until <t:{until_ts}:f>)"));
         }
     }
 
@@ -33,7 +33,7 @@ pub fn build_join_message(new_member: &Member, join_amount: i32, last_known_join
     // Only meaningful on a rejoin: on a first-time join prev_last_join == now, which would
     // misleadingly render as "just now".
     let last_known_join_line = if join_amount > 0 {
-        format!("\n*Last known join <t:{last_known_join}:R>*")
+        format!("\n*Last known join <t:{last_known_join}:R>*\n")
     } else {
         String::new()
     };
@@ -48,19 +48,19 @@ pub fn build_join_message(new_member: &Member, join_amount: i32, last_known_join
             inviter_name = inv.inviter_name,
             invite_created = inv.created_at,
         ),
-        _none => "*Could not determine which invite was used.*".to_string(),
+        None => "*Could not determine which invite was used.*".to_string(),
     };
 
     let username = &new_member.user.name;
     // `<@id>` renders as a real, clickable user ping (right-click -> ban), not just plain text.
     let embed_description = format!(
-        "<@{user_id}> ({username})\n\n\
+        "<@{user_id}> ({username})\n\
+        {last_known_join_line}\n\
          **Account created:**\n\
-         <t:{account_created}:F>\n\
+         <t:{account_created}:f>\n\
          *(`{account_created_ago_string}` at time of joining)*\n\n\
          **Invite Info:**\n\
-         {invite_info}\
-         {last_known_join_line}",
+         {invite_info}",
     );
 
     let avatar_url = new_member.avatar_url().unwrap_or_else(|| new_member.user.face());
@@ -93,14 +93,14 @@ pub fn build_join_message(new_member: &Member, join_amount: i32, last_known_join
 pub fn build_leave_message(user: &User, last_join: Option<i64>) -> CreateMessage {
     let user_id = user.id.get();
     let username = &user.name;
-    // Relative time from the last join renders as "x months ago", i.e. how long they were a member.
+
     let membership = match last_join {
         Some(ts) => {
             let now = OffsetDateTime::now_utc().unix_timestamp();
             let formatted_member_age = format_duration(std::time::Duration::new((now - ts) as u64, 0)).to_string();
-            format!("{formatted_member_age}\nJoined <t:{ts}:F>")
+            format!("{formatted_member_age}\nJoined <t:{ts}:f>")
         },
-        _none => "*Unknown - no join record found.*".to_string(),
+        None => "*Unknown - no join record found.*".to_string(),
     };
 
     let embed_description = format!(
@@ -126,22 +126,30 @@ pub fn build_leave_message(user: &User, last_join: Option<i64>) -> CreateMessage
 pub fn build_invite_message(data: &InviteCreateEvent) -> CreateMessage {
     let (inviter_id, inviter_name, avatar_url) = match &data.inviter {
         Some(user) => (user.id.get(), user.name.clone(), Some(user.face())),
-        _none => (0, "unknown".to_string(), None),
+        None => (0, "unknown".to_string(), None),
     };
 
     let created = data.created_at.unix_timestamp();
     let expiry = if data.max_age == 0 {
-        "**Expires:** Never".to_string()
+        "**∞**".to_string()
     } else {
         let expires_at = created + data.max_age as i64;
-        format!("**Expires:** <t:{expires_at}:F> (<t:{expires_at}:R>)")
+        format!("`{duration}`\n\
+                **Expires:** <t:{expires_at}:f>",
+            duration = format_duration(std::time::Duration::new(data.max_age as u64, 0)).to_string())
+    };
+    let max_uses = if data.max_uses == 0{
+        "**∞**".to_string()
+    } else {
+        data.max_uses.to_string()
     };
 
     let embed_description = format!(
-        "<@{inviter_id}>\n\n\
+        "<@{inviter_id}> ({inviter_name})\n\n\
          **Code:** `{code}`\n\
-         **Created:** <t:{created}:F>\n\
-         {expiry}",
+         **Created:** <t:{created}:f>\n\
+         **Duration:** {expiry}\n\
+         **Max uses:** {max_uses}",
         code = data.code,
     );
 

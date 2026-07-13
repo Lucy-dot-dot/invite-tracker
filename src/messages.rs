@@ -14,21 +14,24 @@ pub fn build_join_message(new_member: &Member, join_amount: i32, last_known_join
     // Suspicious-join indicators. Each pushes a human-readable reason; if any are present the
     // embed is recoloured amber and a "Suspicious" field is added so it stands out in the log.
     const NEW_ACCOUNT_THRESHOLD_SECS: i64 = 48 * 60 * 60;
-    let mut reasons: Vec<String> = Vec::new();
+    let mut suspicions: Vec<String> = Vec::new();
     if now - account_created < NEW_ACCOUNT_THRESHOLD_SECS {
-        reasons.push(format!("Account younger than 48h (<t:{account_created}:R>)"));
+        suspicions.push(format!("## Account younger than 48h (<t:{account_created}:R>)"));
     }
     if let Some(until) = new_member.unusual_dm_activity_until {
         if until.unix_timestamp() > now {
             let until_ts = until.unix_timestamp();
-            reasons.push(format!("Unusual DM activity flagged (until <t:{until_ts}:f>)"));
+            suspicions.push(format!("## Unusual DM activity flagged (until <t:{until_ts}:R>)"));
         }
+    }
+    if new_member.user.avatar.is_none() {
+        suspicions.push("## No avatar set".to_string());
     }
 
     if new_member.user.global_name.is_none() {
-        reasons.push("No display name set".to_string());
+        suspicions.push("No display name set".to_string());
     }
-    let is_suspicious = !reasons.is_empty();
+    let is_suspicious = !suspicions.is_empty();
 
     // Only meaningful on a rejoin: on a first-time join prev_last_join == now, which would
     // misleadingly render as "just now".
@@ -69,7 +72,7 @@ pub fn build_join_message(new_member: &Member, join_amount: i32, last_known_join
 
     let mut embed = CreateEmbed::new()
         .author(embed_author)
-        .title("MEMBER JOINED")
+        .title(if is_suspicious {"⚠️MEMBER JOINED"} else {"MEMBER JOINED"})
         .color(if is_suspicious {
             Colour::new(0xFFA500)
         } else {
@@ -82,7 +85,7 @@ pub fn build_join_message(new_member: &Member, join_amount: i32, last_known_join
         .field("Rejoins", join_amount.to_string(), true);
 
     if is_suspicious {
-        embed = embed.field("Suspicious", reasons.join("\n"), false);
+        embed = embed.field("⚠️Suspicions:", suspicions.join("\n"), false);
     }
 
     let embed = embed.footer(embed_footer);

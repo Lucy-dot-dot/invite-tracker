@@ -136,7 +136,7 @@ pub fn build_invite_message(data: &InviteCreateEvent) -> CreateMessage {
     } else {
         let expires_at = created + data.max_age as i64;
         format!("`{duration}`\n\
-                **Expires:** <t:{expires_at}:f>",
+                **Expires:** <t:{expires_at}:r>",
             duration = format_duration(std::time::Duration::new(data.max_age as u64, 0)).to_string())
     };
     let max_uses = if data.max_uses == 0{
@@ -148,9 +148,8 @@ pub fn build_invite_message(data: &InviteCreateEvent) -> CreateMessage {
     let embed_description = format!(
         "<@{inviter_id}> ({inviter_name})\n\n\
          **Code:** `{code}`\n\
-         **Created:** <t:{created}:f>\n\
-         **Duration:** {expiry}\n\
-         **Max uses:** {max_uses}",
+         **Max uses:** {max_uses}\n\
+         **Duration:** {expiry}",
         code = data.code,
     );
 

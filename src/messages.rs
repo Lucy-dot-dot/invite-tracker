@@ -33,7 +33,7 @@ pub fn build_join_message(new_member: &Member, join_amount: i32, last_known_join
     // Only meaningful on a rejoin: on a first-time join prev_last_join == now, which would
     // misleadingly render as "just now".
     let last_known_join_line = if join_amount > 0 {
-        format!("\n*Last known join <t:{last_known_join}:R>*\n")
+        format!("\n*Last known join <t:{last_known_join}:R>*")
     } else {
         String::new()
     };
@@ -55,7 +55,7 @@ pub fn build_join_message(new_member: &Member, join_amount: i32, last_known_join
     // `<@id>` renders as a real, clickable user ping (right-click -> ban), not just plain text.
     let embed_description = format!(
         "<@{user_id}> ({username})\
-        {last_known_join_line}\n\
+        {last_known_join_line}\n\n\
          **Account created:**\n\
          <t:{account_created}:f>\n\
          *(`{account_created_ago_string}` at time of joining)*\n\n\
@@ -136,7 +136,7 @@ pub fn build_invite_message(data: &InviteCreateEvent) -> CreateMessage {
     } else {
         let expires_at = created + data.max_age as i64;
         format!("`{duration}`\n\
-                **Expires:** <t:{expires_at}:r>",
+                **Expires:** <t:{expires_at}:R>",
             duration = format_duration(std::time::Duration::new(data.max_age as u64, 0)).to_string())
     };
     let max_uses = if data.max_uses == 0{

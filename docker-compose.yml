@@ -39,6 +39,8 @@ services:
       DATABASE_URL: postgres://discord:discord@postgres:5432/discord
     volumes:
       - ./config.toml:/app/config.toml:ro
+      - discord_logs:/app/logs
 
 volumes:
-  postgres_data: 
+  postgres_data:
+  discord_logs: 

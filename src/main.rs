@@ -1,5 +1,17 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
+use log::LevelFilter;
+use log4rs::append::console::ConsoleAppender;
+use log4rs::append::rolling_file::{
+    RollingFileAppender,
+    policy::compound::{
+        CompoundPolicy,
+        roll::fixed_window::FixedWindowRoller,
+        trigger::size::SizeTrigger,
+    },
+};
+use log4rs::config::{Appender, Config as LogConfig, Logger, Root};
+use log4rs::encode::pattern::PatternEncoder;
 use serde::Deserialize;
 use serenity::all::{ChannelId, Context, Guild, GuildId, InviteCreateEvent, InviteDeleteEvent, Member, Ready, RichInvite, User};
 use serenity::Client;
@@ -315,10 +327,47 @@ impl EventHandler for Handler {
     }
 }
 
+fn init_logging() -> Result<(), Box<dyn std::error::Error>> {
+    let pattern = "{d(%Y-%m-%d %H:%M:%S)} {l:5} - {m}{n}";
+
+    let stdout = ConsoleAppender::builder()
+        .encoder(Box::new(PatternEncoder::new(pattern)))
+        .build();
+
+    let roller = FixedWindowRoller::builder()
+        .build("logs/bot.{}.log", 5)?;
+    let trigger = SizeTrigger::new(10 * 1024 * 1024);
+    let policy = CompoundPolicy::new(Box::new(trigger), Box::new(roller));
+
+    let file = RollingFileAppender::builder()
+        .encoder(Box::new(PatternEncoder::new(pattern)))
+        .build("logs/bot.log", Box::new(policy))?;
+
+    // In debug mode, only use stdout and show debug messages
+    let root = if cfg!(debug_assertions) {
+        Root::builder()
+            .appender("stdout")
+            .build(LevelFilter::Debug)
+    } else {
+        Root::builder()
+            .appender("stdout")
+            .appender("file")
+            .build(LevelFilter::Warn)
+    };
+
+    let config = LogConfig::builder()
+        .appender(Appender::builder().build("stdout", Box::new(stdout)))
+        .appender(Appender::builder().build("file", Box::new(file)))
+        .logger(Logger::builder().build("tracing", LevelFilter::Off))
+        .build(root)?;
+
+    log4rs::init_config(config)?;
+    Ok(())
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
-        .filter_module("tracing", log::LevelFilter::Off).init();
+    init_logging()?;
 
     let raw = std::fs::read_to_string("config.toml")?;
     let config: Config = toml::from_str(&raw)?;

@@ -29,4 +29,5 @@ FROM scratch
 USER 1000:1000
 WORKDIR /app
 COPY --from=builder --chown=1000:1000 /discord-logging /app/discord-logging
+VOLUME /app/logs
 ENTRYPOINT ["/app/discord-logging"]

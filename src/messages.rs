@@ -40,9 +40,8 @@ pub fn build_join_message(new_member: &Member, join_amount: i32, last_known_join
 
     let invite_info = match used_invite {
         Some(inv) => format!(
-            "**Code:** `{code}` ({n_uses} uses)\n\
-             **Invited by:** <@{inviter_id}> ({inviter_name})\n\
-             *Created <t:{invite_created}:R>*",
+            "- **Code:** `{code}` ({n_uses} uses)\n\
+             - **Invited by:** <@{inviter_id}> ({inviter_name}) <t:{invite_created}:R>\n",
             code = inv.code,
             inviter_id = inv.inviter_id,
             inviter_name = inv.inviter_name,
@@ -55,7 +54,7 @@ pub fn build_join_message(new_member: &Member, join_amount: i32, last_known_join
     let username = &new_member.user.name;
     // `<@id>` renders as a real, clickable user ping (right-click -> ban), not just plain text.
     let embed_description = format!(
-        "<@{user_id}> ({username})\n\
+        "<@{user_id}> ({username})\
         {last_known_join_line}\n\
          **Account created:**\n\
          <t:{account_created}:f>\n\
@@ -99,14 +98,15 @@ pub fn build_leave_message(user: &User, last_join: Option<i64>) -> CreateMessage
         Some(ts) => {
             let now = OffsetDateTime::now_utc().unix_timestamp();
             let formatted_member_age = format_duration(std::time::Duration::new((now - ts) as u64, 0)).to_string();
-            format!("{formatted_member_age}\nJoined <t:{ts}:f>")
+            format!("**Joined** <t:{ts}:f>\n\
+                    **Was member for** `{formatted_member_age}`")
         },
         None => "*Unknown - no join record found.*".to_string(),
     };
 
     let embed_description = format!(
         "<@{user_id}> ({username})\n\n\
-         **Was member for:**\n{membership}",
+         **Was member for:**\n`{membership}`",
     );
 
     let avatar_url = user.face();

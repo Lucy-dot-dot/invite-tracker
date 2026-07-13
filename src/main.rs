@@ -7,12 +7,8 @@ use serenity::prelude::{EventHandler, GatewayIntents};
 use sqlx::{PgPool, Row};
 use time::{OffsetDateTime};
 
-use crate::datastructures::UsedInvite;
-
-mod messages;
-mod datastructures;
-mod db;
-
+use discord_logging::datastructures::UsedInvite;
+use discord_logging::{messages, db::initialize_database_pool};
 
 #[derive(Deserialize, Clone, Debug)]
 struct Config {
@@ -313,7 +309,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let token = config.resolve_token();
     let database_url = config.resolve_database_url();
 
-    let pool = db::initialize_database_pool(&database_url).await?;
+    let pool = initialize_database_pool(&database_url).await?;
 
     let handler = Handler {
         config: Arc::new(config),

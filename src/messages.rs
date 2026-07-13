@@ -2,7 +2,7 @@ use humantime::format_duration;
 use serenity::all::{Colour, CreateEmbed, CreateEmbedAuthor, CreateEmbedFooter, CreateMessage, InviteCreateEvent, Member, User};
 use time::{OffsetDateTime};
 
-use crate::datastructures::UsedInvite;
+use super::datastructures::UsedInvite;
 
 pub fn build_join_message(new_member: &Member, join_amount: i32, last_known_join: i64, used_invite: Option<&UsedInvite>) -> CreateMessage {
     let user_id = new_member.user.id.get();

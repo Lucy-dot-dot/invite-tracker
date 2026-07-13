@@ -159,6 +159,22 @@ impl Handler {
 #[serenity::async_trait]
 impl EventHandler for Handler {
     async fn guild_create(&self, ctx: Context, guild: Guild, is_new: Option<bool>) {
+        for (&user_id, member) in &guild.members {
+            // joined_at is optional in Discord's API and isn't guaranteed to be populated, so skip
+            // members we can't date rather than inserting a meaningless zero/null.
+            let Some(joined_at) = member.joined_at else { continue };
+            if let Err(e) = sqlx::query(
+                "INSERT INTO joined_member (last_join, user_id, join_amount) VALUES ($1, $2, 0) \
+                 ON CONFLICT (user_id) DO NOTHING")
+                .bind(joined_at.unix_timestamp())
+                .bind(user_id.get() as i64)
+                .execute(&self.pool)
+                .await
+            {
+                log::error!("Failed to backfill member {}: {}", user_id, e);
+            }
+        }
+
         if is_new.unwrap_or(false) {
             log::debug!("Guild {} is connected", guild.name);
             match guild.invites(&ctx).await {

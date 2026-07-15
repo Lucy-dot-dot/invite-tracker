@@ -218,6 +218,10 @@ impl EventHandler for Handler {
             }
         }
 
+        if batch.len() > 0 {
+            self.insert_members_batch(&batch).await;
+        }
+
         if is_new.unwrap_or(false) {
             log::debug!("Guild {} is connected", guild.name);
             match guild.invites(&ctx).await {

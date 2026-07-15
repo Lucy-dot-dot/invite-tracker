@@ -275,10 +275,10 @@ impl EventHandler for Handler {
         }
     }
 
-    async fn guild_member_removal(&self, ctx: Context, _guild_id: GuildId, user: User, member: Option<Member>) {
+    async fn guild_member_removal(&self, ctx: Context, _guild_id: GuildId, user: User, _member: Option<Member>) {
         log::debug!("Member {} left", user.name);
 
-        let mut last_join: Option<i64> = sqlx::query_scalar("SELECT last_join FROM joined_member WHERE user_id = $1")
+        let last_join: Option<i64> = sqlx::query_scalar("SELECT last_join FROM joined_member WHERE user_id = $1")
             .bind(user.id.get() as i64)
             .fetch_optional(&self.pool)
             .await

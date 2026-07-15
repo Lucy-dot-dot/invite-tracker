@@ -115,7 +115,7 @@ pub fn build_leave_message(user: &User, last_join: Option<i64>) -> CreateMessage
 
     let embed_description = format!(
         "<@{user_id}> ({username})\n\n\
-         **Was member for:**\n`{membership}`",
+         **Was member for:**\n{membership}",
     );
 
     let avatar_url = user.face();

@@ -15,6 +15,7 @@ use log4rs::encode::pattern::PatternEncoder;
 use serde::Deserialize;
 use serenity::all::{ChannelId, Context, Guild, GuildId, InviteCreateEvent, InviteDeleteEvent, Member, Ready, RichInvite, User};
 use serenity::Client;
+use serenity::futures::StreamExt;
 use serenity::prelude::{EventHandler, GatewayIntents};
 use sqlx::{PgPool, Row};
 use time::{OffsetDateTime};
@@ -77,6 +78,27 @@ impl Handler {
             log::error!("Failed to upsert invite {}: {}", invite.code, e);
         }
     }
+
+    async fn insert_members_batch(&self, batch: &[(i64, i64)],) {
+        let mut query_builder = sqlx::QueryBuilder::new(
+            "INSERT INTO joined_member (last_join, user_id, join_amount) "
+        );
+        
+        query_builder.push_values(batch, |mut b, (joined_at, user_id)| {
+            b.push(joined_at)
+             .push(user_id)
+             .push(0);
+        });
+        
+        query_builder.push(" ON CONFLICT (user_id) DO NOTHING");
+        
+        if let Err(e) = query_builder.build()
+        .execute(&self.pool)
+        .await  {
+            log::error!("Failed to insert user into database: {}", e);
+        }
+    }
+
 
     /// Re-fetch the guild's invites and compare their use counts against what we last stored to
     /// figure out which invite the joining member used. Also refreshes the stored counts and
@@ -171,19 +193,28 @@ impl Handler {
 #[serenity::async_trait]
 impl EventHandler for Handler {
     async fn guild_create(&self, ctx: Context, guild: Guild, is_new: Option<bool>) {
-        for (&user_id, member) in &guild.members {
-            // joined_at is optional in Discord's API and isn't guaranteed to be populated, so skip
-            // members we can't date rather than inserting a meaningless zero/null.
-            let Some(joined_at) = member.joined_at else { continue };
-            if let Err(e) = sqlx::query(
-                "INSERT INTO joined_member (last_join, user_id, join_amount) VALUES ($1, $2, 0) \
-                 ON CONFLICT (user_id) DO NOTHING")
-                .bind(joined_at.unix_timestamp())
-                .bind(user_id.get() as i64)
-                .execute(&self.pool)
-                .await
-            {
-                log::error!("Failed to backfill member {}: {}", user_id, e);
+        let mut members_iter = guild.id.members_iter(&ctx).boxed();
+
+        const BATCH_SIZE: usize = 256;
+        let mut batch = Vec::with_capacity(BATCH_SIZE);
+        
+        while let Some(member_result) = members_iter.next().await {
+            match member_result {
+                Ok(member) => {
+                    // Only process members with a joined_at timestamp
+                    if let Some(joined_at) = member.joined_at {
+                        batch.push((joined_at.unix_timestamp(), member.user.id.get() as i64));
+                        
+                        // If batch is full, execute the insert
+                        if batch.len() >= BATCH_SIZE {
+                            self.insert_members_batch(&batch).await;
+                            batch.clear();
+                        }
+                    }
+                }
+                Err(e) => {
+                    log::error!("Error fetching member: {}", e);
+                }
             }
         }
 
@@ -252,21 +283,6 @@ impl EventHandler for Handler {
             .fetch_optional(&self.pool)
             .await
             .unwrap_or(None);
-
-        if last_join.is_none() &&
-          let Some(member) = member &&
-          let Some(joined_at) = member.joined_at {
-            if let Err(e) = sqlx::query(
-                "INSERT INTO joined_member (last_join, user_id, join_amount) VALUES ($1, $2, 0)")
-                .bind(joined_at.unix_timestamp())
-                .bind(user.id.get() as i64)
-                .fetch_one(&self.pool)
-                .await
-            {
-                log::error!("Failed to insert user into database: {}", e);
-            }
-            last_join = Some(joined_at.unix_timestamp());
-        }
 
         let channel = ChannelId::new(self.config.target_channel);
         let msg = messages::build_leave_message(&user, last_join);

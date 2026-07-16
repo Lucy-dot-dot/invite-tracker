@@ -107,15 +107,15 @@ pub fn build_leave_message(user: &User, last_join: Option<i64>) -> CreateMessage
         Some(ts) => {
             let now = OffsetDateTime::now_utc().unix_timestamp();
             let formatted_member_age = format_duration(std::time::Duration::new((now - ts) as u64, 0)).to_string();
-            format!("**Joined** <t:{ts}:f>\n\
-                    **Was member for** `{formatted_member_age}`")
+            format!("**Joined:** <t:{ts}:f>\n\
+                    **Was member for:** `{formatted_member_age}`")
         },
-        None => "*Unknown - no join record found.*".to_string(),
+        None => "*no join record found.*".to_string(),
     };
 
     let embed_description = format!(
         "<@{user_id}> ({username})\n\n\
-         **Was member for:**\n{membership}",
+         {membership}",
     );
 
     let avatar_url = user.face();

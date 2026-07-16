@@ -341,25 +341,39 @@ fn init_logging() -> Result<(), Box<dyn std::error::Error>> {
 
     let file = RollingFileAppender::builder()
         .encoder(Box::new(PatternEncoder::new(pattern)))
-        .build("logs/bot.log", Box::new(policy))?;
+        .build("logs/bot.log", Box::new(policy));
 
-    // In debug mode, only use stdout and show debug messages
-    let root = if cfg!(debug_assertions) {
-        Root::builder()
-            .appender("stdout")
-            .build(LevelFilter::Debug)
+    let mut config_builder = LogConfig::builder()
+        .appender(Appender::builder().build("stdout", Box::new(stdout)))
+        .logger(Logger::builder().build("tracing", LevelFilter::Off));
+
+    let mut root_builder = Root::builder().appender("stdout");
+
+    // In debug mode, only use stdout and show debug messages. In release mode
+    // also attach the file appender, but fall back to stdout-only if the logs/
+    // directory is not writable rather than crashing.
+    let level = if cfg!(debug_assertions) {
+        LevelFilter::Debug
     } else {
-        Root::builder()
-            .appender("stdout")
-            .appender("file")
-            .build(LevelFilter::Warn)
+        match file {
+            Ok(file) => {
+                config_builder = config_builder
+                    .appender(Appender::builder().build("file", Box::new(file)));
+                root_builder = root_builder.appender("file");
+                LevelFilter::Warn
+            }
+            Err(e) => {
+                eprintln!(
+                    "WARNING: file logger could not be initialised (logs/ not writable?), \
+                     continuing with stdout only: {e}"
+                );
+                LevelFilter::Warn
+            }
+        }
     };
 
-    let config = LogConfig::builder()
-        .appender(Appender::builder().build("stdout", Box::new(stdout)))
-        .appender(Appender::builder().build("file", Box::new(file)))
-        .logger(Logger::builder().build("tracing", LevelFilter::Off))
-        .build(root)?;
+    let root = root_builder.build(level);
+    let config = config_builder.build(root)?;
 
     log4rs::init_config(config)?;
     Ok(())

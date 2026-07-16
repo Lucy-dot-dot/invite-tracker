@@ -8,15 +8,18 @@ pub fn build_join_message(new_member: &Member, join_amount: i32, last_known_join
     let user_id = new_member.user.id.get();
     let account_created = new_member.user.id.created_at().unix_timestamp();
     let now = OffsetDateTime::now_utc().unix_timestamp();
+    let account_age = now - account_created;
 
-    let account_created_ago_string = format_duration(std::time::Duration::new((now - account_created) as u64, 0)).to_string();
+    let account_created_ago_string = format_duration(std::time::Duration::new(account_age as u64, 0)).to_string();
 
     // Suspicious-join indicators. Each pushes a human-readable reason; if any are present the
     // embed is recoloured amber and a "Suspicious" field is added so it stands out in the log.
     const NEW_ACCOUNT_THRESHOLD_SECS: i64 = 48 * 60 * 60;
     let mut suspicions: Vec<String> = Vec::new();
-    if now - account_created < NEW_ACCOUNT_THRESHOLD_SECS {
-        suspicions.push(format!("## Account younger than 48h (<t:{account_created}:R>)"));
+    if account_age < NEW_ACCOUNT_THRESHOLD_SECS {
+        let h = account_age / (60 * 60);
+        let m = (account_age / 60 ) % 60;
+        suspicions.push(format!("## Account younger than 48h ({h}h {m}m)"));
     }
     if let Some(until) = new_member.unusual_dm_activity_until {
         if until.unix_timestamp() > now {
@@ -81,8 +84,11 @@ pub fn build_join_message(new_member: &Member, join_amount: i32, last_known_join
         .description(embed_description)
         .thumbnail(&avatar_url)
         .field("Display Name", new_member.display_name().to_string(), true)
-        .field("Username", new_member.user.name.clone(), true)
-        .field("Rejoins", join_amount.to_string(), true);
+        .field("Username", new_member.user.name.clone(), true);
+
+    if join_amount > 0 {
+        embed = embed.field("Rejoins", join_amount.to_string(), true);
+    }
 
     if is_suspicious {
         embed = embed.field("⚠️Suspicions:", suspicions.join("\n"), false);
@@ -101,15 +107,15 @@ pub fn build_leave_message(user: &User, last_join: Option<i64>) -> CreateMessage
         Some(ts) => {
             let now = OffsetDateTime::now_utc().unix_timestamp();
             let formatted_member_age = format_duration(std::time::Duration::new((now - ts) as u64, 0)).to_string();
-            format!("**Joined** <t:{ts}:f>\n\
-                    **Was member for** `{formatted_member_age}`")
+            format!("**Joined:** <t:{ts}:f>\n\
+                    **Was member for:** `{formatted_member_age}`")
         },
-        None => "*Unknown - no join record found.*".to_string(),
+        None => "*no join record found.*".to_string(),
     };
 
     let embed_description = format!(
         "<@{user_id}> ({username})\n\n\
-         **Was member for:**\n`{membership}`",
+         {membership}",
     );
 
     let avatar_url = user.face();

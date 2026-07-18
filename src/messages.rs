@@ -1,16 +1,25 @@
 use humantime::format_duration;
-use serenity::all::{Colour, CreateEmbed, CreateEmbedAuthor, CreateEmbedFooter, CreateMessage, InviteCreateEvent, Member, User};
-use time::{OffsetDateTime};
+use serenity::all::{
+    ChannelId, Colour, CreateEmbed, CreateEmbedAuthor, CreateEmbedFooter, CreateMessage, GuildId, InviteCreateEvent, Member, MessageId, User, UserId, 
+};
+use sqlx::types::uuid::timestamp::context;
+use time::OffsetDateTime;
 
 use super::datastructures::UsedInvite;
 
-pub fn build_join_message(new_member: &Member, join_amount: i32, last_known_join: i64, used_invite: Option<&UsedInvite>) -> CreateMessage {
+pub fn build_join_message(
+    new_member: &Member,
+    join_amount: i32,
+    last_known_join: i64,
+    used_invite: Option<&UsedInvite>,
+) -> CreateMessage {
     let user_id = new_member.user.id.get();
     let account_created = new_member.user.id.created_at().unix_timestamp();
     let now = OffsetDateTime::now_utc().unix_timestamp();
     let account_age = now - account_created;
 
-    let account_created_ago_string = format_duration(std::time::Duration::new(account_age as u64, 0)).to_string();
+    let account_created_ago_string =
+        format_duration(std::time::Duration::new(account_age as u64, 0)).to_string();
 
     // Suspicious-join indicators. Each pushes a human-readable reason; if any are present the
     // embed is recoloured amber and a "Suspicious" field is added so it stands out in the log.
@@ -18,13 +27,15 @@ pub fn build_join_message(new_member: &Member, join_amount: i32, last_known_join
     let mut suspicions: Vec<String> = Vec::new();
     if account_age < NEW_ACCOUNT_THRESHOLD_SECS {
         let h = account_age / (60 * 60);
-        let m = (account_age / 60 ) % 60;
+        let m = (account_age / 60) % 60;
         suspicions.push(format!("## Account younger than 48h ({h}h {m}m)"));
     }
     if let Some(until) = new_member.unusual_dm_activity_until {
         if until.unix_timestamp() > now {
             let until_ts = until.unix_timestamp();
-            suspicions.push(format!("## Unusual DM activity flagged (until <t:{until_ts}:R>)"));
+            suspicions.push(format!(
+                "Unusual DM activity flagged (until <t:{until_ts}:R>)"
+            ));
         }
     }
     if new_member.user.avatar.is_none() {
@@ -69,13 +80,19 @@ pub fn build_join_message(new_member: &Member, join_amount: i32, last_known_join
          {invite_info}",
     );
 
-    let avatar_url = new_member.avatar_url().unwrap_or_else(|| new_member.user.face());
+    let avatar_url = new_member
+        .avatar_url()
+        .unwrap_or_else(|| new_member.user.face());
     let embed_author = CreateEmbedAuthor::new(username).icon_url(&avatar_url);
     let embed_footer = CreateEmbedFooter::new(format!("JOINED {user_id}"));
 
     let mut embed = CreateEmbed::new()
         .author(embed_author)
-        .title(if is_suspicious {"⚠️MEMBER JOINED"} else {"MEMBER JOINED"})
+        .title(if is_suspicious {
+            "⚠️MEMBER JOINED"
+        } else {
+            "MEMBER JOINED"
+        })
         .color(if is_suspicious {
             Colour::new(0xFFA500)
         } else {
@@ -106,10 +123,13 @@ pub fn build_leave_message(user: &User, last_join: Option<i64>) -> CreateMessage
     let membership = match last_join {
         Some(ts) => {
             let now = OffsetDateTime::now_utc().unix_timestamp();
-            let formatted_member_age = format_duration(std::time::Duration::new((now - ts) as u64, 0)).to_string();
-            format!("**Joined:** <t:{ts}:f>\n\
-                    **Was member for:** `{formatted_member_age}`")
-        },
+            let formatted_member_age =
+                format_duration(std::time::Duration::new((now - ts) as u64, 0)).to_string();
+            format!(
+                "**Joined:** <t:{ts}:f>\n\
+                    **Was member for:** `{formatted_member_age}`"
+            )
+        }
         None => "*no join record found.*".to_string(),
     };
 
@@ -144,11 +164,14 @@ pub fn build_invite_message(data: &InviteCreateEvent) -> CreateMessage {
         "**∞**".to_string()
     } else {
         let expires_at = created + data.max_age as i64;
-        format!("`{duration}`\n\
+        format!(
+            "`{duration}`\n\
                 **Expires:** <t:{expires_at}:R>",
-            duration = format_duration(std::time::Duration::new(data.max_age as u64, 0)).to_string())
+            duration =
+                format_duration(std::time::Duration::new(data.max_age as u64, 0)).to_string()
+        )
     };
-    let max_uses = if data.max_uses == 0{
+    let max_uses = if data.max_uses == 0 {
         "**∞**".to_string()
     } else {
         data.max_uses.to_string()
@@ -177,6 +200,72 @@ pub fn build_invite_message(data: &InviteCreateEvent) -> CreateMessage {
     if let Some(url) = &avatar_url {
         embed = embed.thumbnail(url);
     }
+
+    CreateMessage::new().embed(embed)
+}
+
+pub fn build_deleted_message(
+    user: Option<User>,
+    message: MessageId,
+    channel: ChannelId,
+    guild: GuildId,
+    content: Option<String>,
+    attachments: Option<String>,
+    edits: i32
+) -> CreateMessage {
+    let created = message.created_at().unix_timestamp();
+
+    let mut header: String;
+
+
+    let embed_author =
+        if let Some(user) = user {
+            let avatar_url = user
+                .avatar_url()
+                .unwrap_or_else(|| user.face());
+            header = format!("**Message by <@{user_id}>({username})deleted in <#{channel}>**",
+                user_id = user.id.get(),
+                username = user.name,
+            );
+          CreateEmbedAuthor::new(user.name).icon_url(avatar_url)
+        } else {
+            header = format!("**Unknown message deleted in <#{channel}>**");
+            CreateEmbedAuthor::new("unknown")
+        };
+    
+    let content = 
+        if let Some(content) = content {
+            content
+        } else {
+            "*Message content not available*".to_string()
+        };
+
+    let now = OffsetDateTime::now_utc().unix_timestamp();
+    let formatted_age =
+        format_duration(std::time::Duration::new((now - created) as u64, 0)).to_string();
+
+    let edited_string = if edits == 0 {
+        "".to_string()
+    } else if edits == 1 {
+        " · edited".to_string()
+    } else {
+        format!(" · edited {edits} times")
+    };
+
+    let message_link = format!("https://discord.com/channels/{guild}/{channel}/{message}");
+
+    let embed_description = format!(
+        "{header}\n\n\
+         {content}\n\n\
+         -# Posted <T:{created}:f> up for `{formatted_age}`{edited_string}\n
+         -# [Jump to surrounding]({message_link})"
+    );
+
+    let embed = CreateEmbed::new()
+        .author(embed_author)
+        .title("MESSAGE DELETED")
+        .color(Colour::new(0x00AAFF))
+        .description(embed_description);
 
     CreateMessage::new().embed(embed)
 }

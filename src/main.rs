@@ -1,33 +1,37 @@
-use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
 use log::LevelFilter;
 use log4rs::append::console::ConsoleAppender;
 use log4rs::append::rolling_file::{
     RollingFileAppender,
     policy::compound::{
-        CompoundPolicy,
-        roll::fixed_window::FixedWindowRoller,
-        trigger::size::SizeTrigger,
+        CompoundPolicy, roll::fixed_window::FixedWindowRoller, trigger::size::SizeTrigger,
     },
 };
 use log4rs::config::{Appender, Config as LogConfig, Logger, Root};
 use log4rs::encode::pattern::PatternEncoder;
 use serde::Deserialize;
-use serenity::all::{ChannelId, Context, Guild, GuildId, InviteCreateEvent, InviteDeleteEvent, Member, Ready, RichInvite, User};
 use serenity::Client;
+use serenity::all::{
+    ChannelId, MessageId, Context, Guild, GuildId, InviteCreateEvent, InviteDeleteEvent, Member, Message,
+    MessageUpdateEvent, Ready, RichInvite, User,
+};
 use serenity::futures::StreamExt;
 use serenity::prelude::{EventHandler, GatewayIntents};
 use sqlx::{PgPool, Row};
-use time::{OffsetDateTime};
+use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
+use stringmetrics::levenshtein_limit;
+use time::OffsetDateTime;
 
 use discord_logging::datastructures::UsedInvite;
-use discord_logging::{messages, db::initialize_database_pool};
+use discord_logging::{db::initialize_database_pool, messages};
 
 #[derive(Deserialize, Clone, Debug)]
 struct Config {
     #[serde(default)]
     token: String,
-    target_channel: u64,
+    join_leave_channel: ChannelId,
+    deleted_msg_channel: ChannelId,
+    edited_msg_distance: u32,
     #[serde(default)]
     database_url: String,
 }
@@ -64,41 +68,36 @@ impl Handler {
         if let Err(e) = sqlx::query(
             "INSERT INTO invites (created_at, guild, inviter, max_age, max_usages, code, uses) \
              VALUES ($1, $2, $3, $4, $5, $6, $7) \
-             ON CONFLICT (code) DO UPDATE SET uses = EXCLUDED.uses")
-            .bind(invite.created_at.unix_timestamp())
-            .bind(guild_id)
-            .bind(inviter_id)
-            .bind(invite.max_age as i32)
-            .bind(invite.max_uses as i32)
-            .bind(&invite.code)
-            .bind(invite.uses as i64)
-            .execute(&self.pool)
-            .await
+             ON CONFLICT (code) DO UPDATE SET uses = EXCLUDED.uses",
+        )
+        .bind(invite.created_at.unix_timestamp())
+        .bind(guild_id)
+        .bind(inviter_id)
+        .bind(invite.max_age as i32)
+        .bind(invite.max_uses as i32)
+        .bind(&invite.code)
+        .bind(invite.uses as i64)
+        .execute(&self.pool)
+        .await
         {
             log::error!("Failed to upsert invite {}: {}", invite.code, e);
         }
     }
 
-    async fn insert_members_batch(&self, batch: &[(i64, i64)],) {
-        let mut query_builder = sqlx::QueryBuilder::new(
-            "INSERT INTO joined_member (last_join, user_id, join_amount) "
-        );
-        
+    async fn insert_members_batch(&self, batch: &[(i64, i64)]) {
+        let mut query_builder =
+            sqlx::QueryBuilder::new("INSERT INTO joined_member (last_join, user_id, join_amount) ");
+
         query_builder.push_values(batch, |mut b, (joined_at, user_id)| {
-            b.push(joined_at)
-             .push(user_id)
-             .push(0);
+            b.push(joined_at).push(user_id).push(0);
         });
-        
+
         query_builder.push(" ON CONFLICT (user_id) DO NOTHING");
-        
-        if let Err(e) = query_builder.build()
-        .execute(&self.pool)
-        .await  {
+
+        if let Err(e) = query_builder.build().execute(&self.pool).await {
             log::error!("Failed to insert user into database: {}", e);
         }
     }
-
 
     /// Re-fetch the guild's invites and compare their use counts against what we last stored to
     /// figure out which invite the joining member used. Also refreshes the stored counts and
@@ -115,11 +114,13 @@ impl Handler {
         };
 
         // Load what we previously stored for this guild: code -> (uses, max_usages, inviter, created_at).
-        let stored_rows = sqlx::query("SELECT code, uses, max_usages, inviter, created_at FROM invites WHERE guild = $1")
-            .bind(guild_key)
-            .fetch_all(&self.pool)
-            .await
-            .unwrap_or_default();
+        let stored_rows = sqlx::query(
+            "SELECT code, uses, max_usages, inviter, created_at FROM invites WHERE guild = $1",
+        )
+        .bind(guild_key)
+        .fetch_all(&self.pool)
+        .await
+        .unwrap_or_default();
         let mut stored: HashMap<String, (i64, i32, i64, i64)> = HashMap::new();
         for row in &stored_rows {
             let code: String = row.get(0);
@@ -197,14 +198,14 @@ impl EventHandler for Handler {
 
         const BATCH_SIZE: usize = 256;
         let mut batch = Vec::with_capacity(BATCH_SIZE);
-        
+
         while let Some(member_result) = members_iter.next().await {
             match member_result {
                 Ok(member) => {
                     // Only process members with a joined_at timestamp
                     if let Some(joined_at) = member.joined_at {
                         batch.push((joined_at.unix_timestamp(), member.user.id.get() as i64));
-                        
+
                         // If batch is full, execute the insert
                         if batch.len() >= BATCH_SIZE {
                             self.insert_members_batch(&batch).await;
@@ -245,11 +246,12 @@ impl EventHandler for Handler {
         let result = sqlx::query(
             "INSERT INTO joined_member (last_join, user_id, join_amount) VALUES ($1, $2, 0) \
              ON CONFLICT (user_id) DO UPDATE SET join_amount = joined_member.join_amount + 1 \
-             RETURNING id, last_join, join_amount")
-            .bind(now)
-            .bind(new_member.user.id.get() as i64)
-            .fetch_one(&self.pool)
-            .await;
+             RETURNING id, last_join, join_amount",
+        )
+        .bind(now)
+        .bind(new_member.user.id.get() as i64)
+        .fetch_one(&self.pool)
+        .await;
         let result = match result {
             Ok(row) => row,
             Err(e) => {
@@ -261,14 +263,6 @@ impl EventHandler for Handler {
         let prev_last_join: i64 = result.get(1);
         let join_amount: i32 = result.get(2);
 
-        let used_invite = self.sync_invites_find_used(&ctx, new_member.guild_id).await;
-
-        let channel = ChannelId::new(self.config.target_channel);
-        let msg = messages::build_join_message(&new_member, join_amount, prev_last_join, used_invite.as_ref());
-        if let Err(e) = channel.send_message(&ctx, msg).await {
-            log::error!("Unable to send join message to channel {}: {}", channel, e);
-        }
-
         if let Err(e) = sqlx::query("UPDATE joined_member SET last_join = $1 WHERE id = $2")
             .bind(now)
             .bind(id)
@@ -277,18 +271,38 @@ impl EventHandler for Handler {
         {
             log::error!("Failed to update last_join: {}", e);
         }
+
+        let used_invite = self.sync_invites_find_used(&ctx, new_member.guild_id).await;
+
+        let channel = self.config.join_leave_channel;
+        let msg = messages::build_join_message(
+            &new_member,
+            join_amount,
+            prev_last_join,
+            used_invite.as_ref(),
+        );
+        if let Err(e) = channel.send_message(&ctx, msg).await {
+            log::error!("Unable to send join message to channel {}: {}", channel, e);
+        }
     }
 
-    async fn guild_member_removal(&self, ctx: Context, _guild_id: GuildId, user: User, _member: Option<Member>) {
+    async fn guild_member_removal(
+        &self,
+        ctx: Context,
+        _guild_id: GuildId,
+        user: User,
+        _member: Option<Member>,
+    ) {
         log::debug!("Member {} left", user.name);
 
-        let last_join: Option<i64> = sqlx::query_scalar("SELECT last_join FROM joined_member WHERE user_id = $1")
-            .bind(user.id.get() as i64)
-            .fetch_optional(&self.pool)
-            .await
-            .unwrap_or(None);
+        let last_join: Option<i64> =
+            sqlx::query_scalar("SELECT last_join FROM joined_member WHERE user_id = $1")
+                .bind(user.id.get() as i64)
+                .fetch_optional(&self.pool)
+                .await
+                .unwrap_or(None);
 
-        let channel = ChannelId::new(self.config.target_channel);
+        let channel = self.config.join_leave_channel;
         let msg = messages::build_leave_message(&user, last_join);
         if let Err(e) = channel.send_message(&ctx, msg).await {
             log::error!("Unable to send leave message to channel {}: {}", channel, e);
@@ -314,24 +328,29 @@ impl EventHandler for Handler {
         if let Err(e) = sqlx::query(
             "INSERT INTO invites (created_at, guild, inviter, max_age, max_usages, code, uses) \
              VALUES ($1, $2, $3, $4, $5, $6, $7) \
-             ON CONFLICT (code) DO UPDATE SET uses = EXCLUDED.uses")
-            .bind(data.created_at.unix_timestamp())
-            .bind(guild_id.get() as i64)
-            .bind(id as i64)
-            .bind(data.max_age as i32)
-            .bind(data.max_uses as i32)
-            .bind(&data.code)
-            .bind(data.uses as i64)
-            .execute(&self.pool)
-            .await
+             ON CONFLICT (code) DO UPDATE SET uses = EXCLUDED.uses",
+        )
+        .bind(data.created_at.unix_timestamp())
+        .bind(guild_id.get() as i64)
+        .bind(id as i64)
+        .bind(data.max_age as i32)
+        .bind(data.max_uses as i32)
+        .bind(&data.code)
+        .bind(data.uses as i64)
+        .execute(&self.pool)
+        .await
         {
             log::error!("Failed to insert invite {}: {}", data.code, e);
         }
 
-        let channel = ChannelId::new(self.config.target_channel);
+        let channel = self.config.join_leave_channel;
         let msg = messages::build_invite_message(&data);
         if let Err(e) = channel.send_message(&ctx, msg).await {
-            log::error!("Unable to send invite message to channel {}: {}", channel, e);
+            log::error!(
+                "Unable to send invite message to channel {}: {}",
+                channel,
+                e
+            );
         }
     }
 
@@ -340,6 +359,145 @@ impl EventHandler for Handler {
         // and a single-use invite that was just consumed needs to survive in the DB long enough for
         // the join handler to attribute it. Stale rows are pruned during the next join's sync.
         log::debug!("Invite {} deleted", data.code);
+    }
+
+    async fn message(&self, _ctx: Context, message: Message) {
+        if message.author.bot {
+            return;
+        }
+
+        let attachments_string = message
+            .attachments
+            .iter()
+            .map(|attachment| attachment.proxy_url.as_str())
+            .collect::<Vec<&str>>()
+            .join(",");
+
+        if let Err(e) = sqlx::query(
+            "INSERT INTO messages (id, user, message, embeds) \
+             VALUES ($1, $2, $3, $4)",
+        )
+        .bind(message.id.get() as i64)
+        .bind(message.author.id.get() as i64)
+        .bind(message.content)
+        .bind(attachments_string)
+        .execute(&self.pool)
+        .await
+        {
+            log::error!("Failed to store message: {}", e);
+        }
+    }
+
+    async fn message_update(
+        &self,
+        _ctx: Context,
+        _old: Option<Message>,
+        _new: Option<Message>,
+        event: MessageUpdateEvent,
+    ) {
+        if let Some(author) = &event.author
+            && author.bot
+        {
+            return;
+        }
+
+        let attachments_string = event.attachments.map(|attachments| {
+            attachments
+                .iter()
+                .map(|attachment| attachment.proxy_url.as_str())
+                .collect::<Vec<&str>>()
+                .join(",")
+        });
+
+        let result = sqlx::query(
+            "UPDATE messages SET
+                message = COALESCE($2, message),
+                embeds = COALESCE($3, embeds),
+                edits = edits + 1
+            WHERE id = $1
+            RETURNING 
+                message, embeds, edits",
+        )
+        .bind(event.id.get() as i64)
+        .bind(&event.content)
+        .bind(&attachments_string)
+        .fetch_optional(&self.pool)
+        .await;
+
+        let result = match result {
+            Ok(Some(row)) => row,
+            Ok(None) => {
+                // If we have the author, store it as a new message
+                if let Some(author) = event.author {
+                    if let Err(e) = sqlx::query(
+                        "INSERT INTO messages (id, user, message, embeds, edits) \
+                    VALUES ($1, $2, $3, $4, 1)",
+                    )
+                    .bind(event.id.get() as i64)
+                    .bind(author.id.get() as i64)
+                    .bind(&event.content)
+                    .bind(&attachments_string)
+                    .execute(&self.pool)
+                    .await
+                        {
+                            log::error!("Failed to store message: {}", e);
+                        }
+                }
+                return;
+            }
+            Err(e) => {
+                log::error!("Failed to update message edit: {}", e);
+                return;
+            }
+        };
+
+        let old_message: String = result.get(0);
+        let old_embeds: String = result.get(1);
+        let edit_count: i32 = result.get(3);
+
+        if let Some(new_message) = event.content {
+            let similarity = levenshtein_limit(new_message.as_str(), old_message.as_str(), self.config.edited_msg_distance);
+            if similarity < self.config.edited_msg_distance{
+                return;
+            }
+            // TODO: log message edit 
+        }
+    }
+
+
+async fn message_delete (
+    &self,
+    _ctx: Context,
+    channel_id: ChannelId,
+    deleted_message_id: MessageId,
+    guild_id: Option<GuildId>,
+    ) {
+        let result = sqlx::query(
+            "SELECT user, message, embeds, edits 
+             FROM messages
+             WHERE id = $1",
+        )
+        .bind(deleted_message_id.get() as i64)
+        .fetch_optional(&self.pool)
+        .await;
+
+        let result = match result {
+            Ok(Some(row)) => row,
+            Ok(None) => {
+
+                return;
+            }
+            Err(e) => {
+                log::error!("Failed to update message edit: {}", e);
+                return;
+            }
+        };
+
+        let old_message: String = result.get(0);
+        let old_embeds: String = result.get(1);
+        let edit_count: i32 = result.get(3);
+
+        // TODO: log message delete
     }
 
     async fn ready(&self, _ctx: Context, _ready: Ready) {
@@ -354,8 +512,7 @@ fn init_logging() -> Result<(), Box<dyn std::error::Error>> {
         .encoder(Box::new(PatternEncoder::new(pattern)))
         .build();
 
-    let roller = FixedWindowRoller::builder()
-        .build("logs/bot.{}.log", 5)?;
+    let roller = FixedWindowRoller::builder().build("logs/bot.{}.log", 5)?;
     let trigger = SizeTrigger::new(10 * 1024 * 1024);
     let policy = CompoundPolicy::new(Box::new(trigger), Box::new(roller));
 
@@ -377,8 +534,8 @@ fn init_logging() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         match file {
             Ok(file) => {
-                config_builder = config_builder
-                    .appender(Appender::builder().build("file", Box::new(file)));
+                config_builder =
+                    config_builder.appender(Appender::builder().build("file", Box::new(file)));
                 root_builder = root_builder.appender("file");
                 LevelFilter::Warn
             }
@@ -417,7 +574,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let intents = GatewayIntents::GUILDS
         | GatewayIntents::GUILD_MEMBERS
-        | GatewayIntents::GUILD_INVITES;
+        | GatewayIntents::GUILD_INVITES
+        | GatewayIntents::MESSAGE_CONTENT;
 
     let mut client = Client::builder(&token, intents)
         .event_handler(handler)

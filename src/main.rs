@@ -381,10 +381,6 @@ impl EventHandler for Handler {
     }
 
     async fn message(&self, _ctx: Context, message: Message) {
-        if message.author.bot {
-            return;
-        }
-
         let attachments_string = self.format_attachments(message.attachments);
             
         if let Err(e) = sqlx::query(
@@ -409,21 +405,9 @@ impl EventHandler for Handler {
         _new: Option<Message>,
         event: MessageUpdateEvent,
     ) {
-        log::error!("Event");
-
-        if let Some(author) = &event.author
-            && author.bot
-        {
-            return;
-        }
-
         let Some(guild) = event.guild_id else {
             return;
         };
-
-        let attachments_string = event.attachments.map(|attachments| {
-                self.format_attachments(attachments)
-        }).flatten();
 
         let result = sqlx::query(
             "UPDATE messages SET
@@ -435,13 +419,15 @@ impl EventHandler for Handler {
         )
         .bind(event.id.get() as i64)
         .bind(&event.content)
-        .bind(&attachments_string)
         .fetch_optional(&self.pool)
         .await;
 
         let result = match result {
             Ok(Some(row)) => row,
             Ok(None) => {
+                    let attachments_string = event.attachments.map(|attachments| {
+                        self.format_attachments(attachments)
+                }).flatten();
                 // If we have the author, store it as a new message
                 if let Some(author) = event.author {
                     if let Err(e) = sqlx::query(
@@ -473,8 +459,7 @@ impl EventHandler for Handler {
 
         if let Some(new_message) = event.content && let Some(old_message) = old_message {
             let similarity = levenshtein_limit(new_message.as_str(), old_message.as_str(), self.config.edited_msg_distance);
-            log::error!("similarity {similarity}");
-
+            
             if similarity < self.config.edited_msg_distance{
                 return;
             }

@@ -1,6 +1,6 @@
 use humantime::format_duration;
 use serenity::all::{
-    ChannelId, Colour, CreateEmbed, CreateEmbedAuthor, CreateEmbedFooter, CreateMessage, GuildId, InviteCreateEvent, Member, MessageId, User, 
+    ChannelId, Colour, CreateEmbed, CreateEmbedAuthor, CreateMessage, GuildId, InviteCreateEvent, Member, MessageId, User, 
 };
 use time::OffsetDateTime;
 
@@ -83,7 +83,6 @@ pub fn build_join_message(
         .avatar_url()
         .unwrap_or_else(|| new_member.user.face());
     let embed_author = CreateEmbedAuthor::new(username).icon_url(&avatar_url);
-    let embed_footer = CreateEmbedFooter::new(format!("JOINED {user_id}"));
 
     let mut embed = CreateEmbed::new()
         .author(embed_author)
@@ -109,8 +108,6 @@ pub fn build_join_message(
     if is_suspicious {
         embed = embed.field("⚠️Suspicions:", suspicions.join("\n"), false);
     }
-
-    let embed = embed.footer(embed_footer);
 
     CreateMessage::new().embed(embed)
 }
@@ -139,15 +136,13 @@ pub fn build_leave_message(user: &User, last_join: Option<i64>) -> CreateMessage
 
     let avatar_url = user.face();
     let embed_author = CreateEmbedAuthor::new(&user.name).icon_url(&avatar_url);
-    let embed_footer = CreateEmbedFooter::new(format!("LEFT {user_id}"));
 
     let embed = CreateEmbed::new()
         .author(embed_author)
         .title("MEMBER LEFT")
         .color(Colour::new(0xFF0000))
         .description(embed_description)
-        .thumbnail(&avatar_url)
-        .footer(embed_footer);
+        .thumbnail(&avatar_url);
 
     CreateMessage::new().embed(embed)
 }
@@ -188,14 +183,12 @@ pub fn build_invite_message(data: &InviteCreateEvent) -> CreateMessage {
     if let Some(url) = &avatar_url {
         embed_author = embed_author.icon_url(url);
     }
-    let embed_footer = CreateEmbedFooter::new(format!("INV_CREATED {inviter_id}"));
 
     let mut embed = CreateEmbed::new()
         .author(embed_author)
         .title("INVITE CREATED")
         .color(Colour::new(0x00AAFF))
-        .description(embed_description)
-        .footer(embed_footer);
+        .description(embed_description);
     if let Some(url) = &avatar_url {
         embed = embed.thumbnail(url);
     }

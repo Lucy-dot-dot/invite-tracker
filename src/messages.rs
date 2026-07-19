@@ -1,8 +1,7 @@
 use humantime::format_duration;
 use serenity::all::{
-    ChannelId, Colour, CreateEmbed, CreateEmbedAuthor, CreateEmbedFooter, CreateMessage, GuildId, InviteCreateEvent, Member, MessageId, User, UserId, 
+    ChannelId, Colour, CreateEmbed, CreateEmbedAuthor, CreateEmbedFooter, CreateMessage, GuildId, InviteCreateEvent, Member, MessageId, User, 
 };
-use sqlx::types::uuid::timestamp::context;
 use time::OffsetDateTime;
 
 use super::datastructures::UsedInvite;
@@ -223,7 +222,7 @@ pub fn build_deleted_message(
             let avatar_url = user
                 .avatar_url()
                 .unwrap_or_else(|| user.face());
-            header = format!("**Message by <@{user_id}>({username})deleted in <#{channel}>**",
+            header = format!("**Message by <@{user_id}>({username}) deleted in <#{channel}>**",
                 user_id = user.id.get(),
                 username = user.name,
             );
@@ -257,7 +256,7 @@ pub fn build_deleted_message(
     let embed_description = format!(
         "{header}\n\n\
          {content}\n\n\
-         -# Posted <T:{created}:f> up for `{formatted_age}`{edited_string}\n
+         -# Posted <t:{created}:f> up for `{formatted_age}`{edited_string}\n\
          -# [Jump to surrounding]({message_link})"
     );
 

@@ -11,8 +11,7 @@ use log4rs::encode::pattern::PatternEncoder;
 use serde::Deserialize;
 use serenity::Client;
 use serenity::all::{
-    ChannelId, MessageId, Context, Guild, GuildId, InviteCreateEvent, InviteDeleteEvent, Member, Message,
-    MessageUpdateEvent, Ready, RichInvite, User,
+    ChannelId, Context, Guild, GuildId, InviteCreateEvent, InviteDeleteEvent, Member, Message, MessageId, MessageUpdateEvent, Ready, RichInvite, User, UserId,
 };
 use serenity::futures::StreamExt;
 use serenity::prelude::{EventHandler, GatewayIntents};
@@ -371,10 +370,10 @@ impl EventHandler for Handler {
             .iter()
             .map(|attachment| attachment.proxy_url.as_str())
             .collect::<Vec<&str>>()
-            .join(",");
+            .join("\n");
 
         if let Err(e) = sqlx::query(
-            "INSERT INTO messages (id, user, message, embeds) \
+            "INSERT INTO messages (id, user_id, message, embeds) \
              VALUES ($1, $2, $3, $4)",
         )
         .bind(message.id.get() as i64)
@@ -401,12 +400,18 @@ impl EventHandler for Handler {
             return;
         }
 
+        if event.guild_id.is_none() {
+            // Ignore DMs
+            return;
+        }
+
+
         let attachments_string = event.attachments.map(|attachments| {
             attachments
                 .iter()
                 .map(|attachment| attachment.proxy_url.as_str())
                 .collect::<Vec<&str>>()
-                .join(",")
+                .join("\n")
         });
 
         let result = sqlx::query(
@@ -467,37 +472,53 @@ impl EventHandler for Handler {
 
 async fn message_delete (
     &self,
-    _ctx: Context,
+    ctx: Context,
     channel_id: ChannelId,
     deleted_message_id: MessageId,
     guild_id: Option<GuildId>,
     ) {
-        let result = sqlx::query(
-            "SELECT user, message, embeds, edits 
+        let Some(guild_id) = guild_id else {
+            // Ignore DMs
+            return;
+        };
+
+        let row = sqlx::query(
+            "SELECT user_id, message, embeds, edits 
              FROM messages
              WHERE id = $1",
         )
         .bind(deleted_message_id.get() as i64)
         .fetch_optional(&self.pool)
-        .await;
+        .await
+        .unwrap_or_else(|e| {
+            log::error!("Failed to fetch message: {}", e);
+            None
+        });
 
-        let result = match result {
-            Ok(Some(row)) => row,
-            Ok(None) => {
+        let (user_id, content, attachments, edits) = row
+            .as_ref()
+            .map(|r| (
+                Some(r.get::<i64, _>(0)),
+                r.get::<Option<String>, _>(1),
+                r.get::<Option<String>, _>(2),
+                r.get::<i32, _>(3),
+            ))
+            .unwrap_or((None, None, None, 0));
 
-                return;
-            }
-            Err(e) => {
-                log::error!("Failed to update message edit: {}", e);
-                return;
-            }
+        let user = match user_id {
+            Some(uid) => UserId::new(uid as u64).to_user(&ctx).await.ok(),
+            None => None,
         };
 
-        let old_message: String = result.get(0);
-        let old_embeds: String = result.get(1);
-        let edit_count: i32 = result.get(3);
-
-        // TODO: log message delete
+        let channel = self.config.deleted_msg_channel;
+        let msg = messages::build_deleted_message(user, deleted_message_id, channel_id, guild_id, content, attachments, edits);
+        if let Err(e) = channel.send_message(&ctx, msg).await {
+            log::error!(
+                "Unable to send deleted message to channel {}: {}",
+                channel,
+                e
+            );
+        }
     }
 
     async fn ready(&self, _ctx: Context, _ready: Ready) {
@@ -575,7 +596,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let intents = GatewayIntents::GUILDS
         | GatewayIntents::GUILD_MEMBERS
         | GatewayIntents::GUILD_INVITES
-        | GatewayIntents::MESSAGE_CONTENT;
+        | GatewayIntents::MESSAGE_CONTENT
+        | GatewayIntents::GUILD_MESSAGES;
 
     let mut client = Client::builder(&token, intents)
         .event_handler(handler)

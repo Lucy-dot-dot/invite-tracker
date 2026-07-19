@@ -11,7 +11,7 @@ use log4rs::encode::pattern::PatternEncoder;
 use serde::Deserialize;
 use serenity::Client;
 use serenity::all::{
-    ChannelId, Context, Guild, GuildId, InviteCreateEvent, InviteDeleteEvent, Member, Message, MessageId, MessageUpdateEvent, Ready, RichInvite, User, UserId,
+    Attachment, ChannelId, Context, Guild, GuildId, InviteCreateEvent, InviteDeleteEvent, Member, Message, MessageId, MessageUpdateEvent, Ready, RichInvite, User, UserId,
 };
 use serenity::futures::StreamExt;
 use serenity::prelude::{EventHandler, GatewayIntents};
@@ -80,6 +80,26 @@ impl Handler {
         .await
         {
             log::error!("Failed to upsert invite {}: {}", invite.code, e);
+        }
+    }
+
+    fn format_attachments (&self, attachments: Vec<Attachment>) -> Option<String>{
+        let urls: Vec<&str> = attachments
+            .iter()
+            .filter(|attachment| {
+                attachment
+                    .content_type
+                    .as_ref()
+                    .map(|ct| ct.starts_with("image/"))
+                    .unwrap_or(false)
+            })
+            .map(|attachment| attachment.proxy_url.as_str())
+            .collect();
+        
+        if urls.is_empty() {
+            None
+        } else {
+            Some(urls.join("\n"))
         }
     }
 
@@ -365,13 +385,8 @@ impl EventHandler for Handler {
             return;
         }
 
-        let attachments_string = message
-            .attachments
-            .iter()
-            .map(|attachment| attachment.proxy_url.as_str())
-            .collect::<Vec<&str>>()
-            .join("\n");
-
+        let attachments_string = self.format_attachments(message.attachments);
+            
         if let Err(e) = sqlx::query(
             "INSERT INTO messages (id, user_id, message, embeds) \
              VALUES ($1, $2, $3, $4)",
@@ -389,39 +404,34 @@ impl EventHandler for Handler {
 
     async fn message_update(
         &self,
-        _ctx: Context,
+        ctx: Context,
         _old: Option<Message>,
         _new: Option<Message>,
         event: MessageUpdateEvent,
     ) {
+        log::error!("Event");
+
         if let Some(author) = &event.author
             && author.bot
         {
             return;
         }
 
-        if event.guild_id.is_none() {
-            // Ignore DMs
+        let Some(guild) = event.guild_id else {
             return;
-        }
-
+        };
 
         let attachments_string = event.attachments.map(|attachments| {
-            attachments
-                .iter()
-                .map(|attachment| attachment.proxy_url.as_str())
-                .collect::<Vec<&str>>()
-                .join("\n")
-        });
+                self.format_attachments(attachments)
+        }).flatten();
 
         let result = sqlx::query(
             "UPDATE messages SET
                 message = COALESCE($2, message),
-                embeds = COALESCE($3, embeds),
                 edits = edits + 1
             WHERE id = $1
             RETURNING 
-                message, embeds, edits",
+                OLD.message1, edits",
         )
         .bind(event.id.get() as i64)
         .bind(&event.content)
@@ -435,7 +445,7 @@ impl EventHandler for Handler {
                 // If we have the author, store it as a new message
                 if let Some(author) = event.author {
                     if let Err(e) = sqlx::query(
-                        "INSERT INTO messages (id, user, message, embeds, edits) \
+                        "INSERT INTO messages (id, user_id, message, embeds, edits) \
                     VALUES ($1, $2, $3, $4, 1)",
                     )
                     .bind(event.id.get() as i64)
@@ -456,16 +466,27 @@ impl EventHandler for Handler {
             }
         };
 
-        let old_message: String = result.get(0);
-        let old_embeds: String = result.get(1);
-        let edit_count: i32 = result.get(3);
+        let old_message: Option<String> = result.get(0);
+        let edits: i32 = result.get(1);
 
-        if let Some(new_message) = event.content {
+        let channel = self.config.deleted_msg_channel;
+
+        if let Some(new_message) = event.content && let Some(old_message) = old_message {
             let similarity = levenshtein_limit(new_message.as_str(), old_message.as_str(), self.config.edited_msg_distance);
+            log::error!("similarity {similarity}");
+
             if similarity < self.config.edited_msg_distance{
                 return;
             }
-            // TODO: log message edit 
+
+            let msg = messages::build_edited_message(event.author, event.id, event.channel_id, guild, Some(old_message), edits);
+            if let Err(e) = channel.send_message(&ctx, msg).await {
+                log::error!(
+                    "Unable to send edited message to channel {}: {}",
+                    channel,
+                    e
+                );
+            }
         }
     }
 

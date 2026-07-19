@@ -203,6 +203,65 @@ pub fn build_invite_message(data: &InviteCreateEvent) -> CreateMessage {
     CreateMessage::new().embed(embed)
 }
 
+
+pub fn build_edited_message(
+    user: Option<User>,
+    message: MessageId,
+    channel: ChannelId,
+    guild: GuildId,
+    content: Option<String>,
+    edits: i32
+) -> CreateMessage {
+    let created = message.created_at().unix_timestamp();
+
+    let header: String;
+
+    let embed_author =
+        if let Some(user) = user {
+            let avatar_url = user
+                .avatar_url()
+                .unwrap_or_else(|| user.face());
+            header = format!("**Message by <@{user_id}>({username}) edited in <#{channel}>** Previous content:",
+                user_id = user.id.get(),
+                username = user.name,
+            );
+          CreateEmbedAuthor::new(user.name).icon_url(avatar_url)
+        } else {
+            header = format!("**Unknown message edited in <#{channel}>**  Previous content:");
+            CreateEmbedAuthor::new("unknown")
+        };
+    
+    let content = 
+        if let Some(content) = content {
+            content
+        } else {
+            "*Message content not available*".to_string()
+        };
+
+    let edited_string = if edits > 1 {
+        format!(" (edited {edits} times)")
+    } else {
+        "".to_string()
+    };
+
+    let message_link = format!("https://discord.com/channels/{guild}/{channel}/{message}");
+
+    let embed_description = format!(
+        "{header}\n\
+         {content}\n\n\
+         -# Posted <t:{created}:f>{edited_string}\n\
+         -# [Jump to message]({message_link})"
+    );
+
+    let embed = CreateEmbed::new()
+        .author(embed_author)
+        .title("MESSAGE DELETED")
+        .color(Colour::new(0xFFAA00))
+        .description(embed_description);
+
+    CreateMessage::new().embed(embed)
+}
+
 pub fn build_deleted_message(
     user: Option<User>,
     message: MessageId,
@@ -214,8 +273,7 @@ pub fn build_deleted_message(
 ) -> CreateMessage {
     let created = message.created_at().unix_timestamp();
 
-    let mut header: String;
-
+    let header: String;
 
     let embed_author =
         if let Some(user) = user {
@@ -246,25 +304,46 @@ pub fn build_deleted_message(
     let edited_string = if edits == 0 {
         "".to_string()
     } else if edits == 1 {
-        " · edited".to_string()
+        " (edited)".to_string()
     } else {
-        format!(" · edited {edits} times")
+        format!(" (edited {edits} times)")
     };
 
     let message_link = format!("https://discord.com/channels/{guild}/{channel}/{message}");
 
     let embed_description = format!(
-        "{header}\n\n\
+        "{header}\n\
          {content}\n\n\
          -# Posted <t:{created}:f> up for `{formatted_age}`{edited_string}\n\
          -# [Jump to surrounding]({message_link})"
     );
 
-    let embed = CreateEmbed::new()
+    let mut embed = CreateEmbed::new()
         .author(embed_author)
         .title("MESSAGE DELETED")
-        .color(Colour::new(0x00AAFF))
+        .color(Colour::new(0xFF0000))
         .description(embed_description);
 
-    CreateMessage::new().embed(embed)
+
+    let mut message = CreateMessage::new();
+
+    if let Some(attachments) = attachments {
+        let attachments: Vec<&str> = attachments.split("\n").collect();
+        
+        if !attachments.is_empty() {
+            // First attachment goes in the main embed
+            embed = embed.thumbnail(attachments[0]); 
+            message = message.embed(embed);
+            
+            // Any additional attachments get their own embeds
+            for attachment in attachments.iter().skip(1) {
+                let extra_embed = CreateEmbed::new()
+                    .thumbnail(*attachment)
+                    .color(Colour::new(0xFF0000));
+                message = message.add_embed(extra_embed);
+            }
+            return message;
+        } 
+    }
+    message.embed(embed)
 }

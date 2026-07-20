@@ -409,6 +409,10 @@ impl EventHandler for Handler {
             return;
         };
 
+        if let Some(author) = &event.author && author.bot {
+            return;
+        }
+
         let result = sqlx::query(
             "UPDATE messages SET
                 message = COALESCE($2, message),
@@ -515,6 +519,10 @@ async fn message_delete (
             Some(uid) => UserId::new(uid as u64).to_user(&ctx).await.ok(),
             None => None,
         };
+
+        if let Some(user) = &user && user.bot {
+            return;
+        }
 
         let channel = self.config.deleted_msg_channel;
         let msg = messages::build_deleted_message(user, deleted_message_id, channel_id, guild_id, content, attachments, edits);

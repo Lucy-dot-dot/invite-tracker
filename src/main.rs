@@ -459,15 +459,18 @@ impl EventHandler for Handler {
         let old_message: Option<String> = result.get(0);
         let edits: i32 = result.get(1);
 
-        let channel = self.config.deleted_msg_channel;
-
         if let Some(new_message) = event.content && let Some(old_message) = old_message {
+            if old_message.is_empty() {
+                // If the message has no content there's no point in logging it
+                return;
+            }
             let similarity = levenshtein_limit(new_message.as_str(), old_message.as_str(), self.config.edited_msg_distance);
 
             if similarity < self.config.edited_msg_distance{
                 return;
             }
 
+            let channel = self.config.deleted_msg_channel;
             let msg = messages::build_edited_message(event.author, event.id, event.channel_id, guild, Some(old_message), edits);
             if let Err(e) = channel.send_message(&ctx, msg).await {
                 log::error!(

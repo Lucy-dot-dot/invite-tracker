@@ -363,7 +363,7 @@ pub fn build_bulk_delete_message(
             } else {
                 processed_message
             };
-        content.push_str(&format!("-# - {processed_message}\n"));
+        content.push_str(&format!("-# • {processed_message}\n"));
     }
 
     let embed_description = format!(

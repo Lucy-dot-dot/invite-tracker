@@ -1,6 +1,6 @@
 use humantime::format_duration;
 use serenity::all::{
-    ChannelId, Colour, CreateEmbed, CreateEmbedAuthor, CreateMessage, GuildId, InviteCreateEvent, Member, MessageId, User, 
+    ChannelId, Colour, CreateEmbed, CreateEmbedAuthor, CreateMessage, GuildId, InviteCreateEvent, Member, MessageId, User
 };
 use time::OffsetDateTime;
 
@@ -248,7 +248,7 @@ pub fn build_edited_message(
 
     let embed = CreateEmbed::new()
         .author(embed_author)
-        .title("MESSAGE DELETED")
+        .title("MESSAGE EDITED")
         .color(Colour::new(0xFFAA00))
         .description(embed_description);
 
@@ -339,4 +339,42 @@ pub fn build_deleted_message(
         } 
     }
     message.embed(embed)
+}
+
+pub fn build_bulk_delete_message(
+    messages: Vec<(u64, String)>,
+    channel: ChannelId,
+    count: usize
+) -> CreateMessage {
+
+    let mut content = String::new();
+
+    let mut current_user_id: u64 = 0;
+
+    for (user_id, message) in messages {
+        if user_id != current_user_id {
+            content.push_str(&format!("-# **<@{user_id}>:**\n"));
+            current_user_id = user_id;
+        }
+
+        let processed_message = message.replace('\n', " ");
+        let processed_message = if processed_message.len() > 100 {
+                format!("{}...", processed_message[..100].trim())
+            } else {
+                processed_message
+            };
+        content.push_str(&format!("-# - {processed_message}\n"));
+    }
+
+    let embed_description = format!(
+        "**{count} messages deleted in <#{channel}>**\n\n\
+         {content}"
+    );
+
+    let embed = CreateEmbed::new()
+        .title("BULK MESSAGE DELETE")
+        .color(Colour::new(0xFF0000))
+        .description(embed_description);
+
+    CreateMessage::new().embed(embed)
 }

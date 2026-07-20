@@ -415,7 +415,7 @@ impl EventHandler for Handler {
                 edits = edits + 1
             WHERE id = $1
             RETURNING 
-                OLD.message1, edits",
+                OLD.message, edits",
         )
         .bind(event.id.get() as i64)
         .bind(&event.content)
@@ -459,7 +459,7 @@ impl EventHandler for Handler {
 
         if let Some(new_message) = event.content && let Some(old_message) = old_message {
             let similarity = levenshtein_limit(new_message.as_str(), old_message.as_str(), self.config.edited_msg_distance);
-            
+
             if similarity < self.config.edited_msg_distance{
                 return;
             }
@@ -526,6 +526,60 @@ async fn message_delete (
             );
         }
     }
+
+    async fn message_delete_bulk(
+        &self,
+        ctx: Context,
+        channel_id: ChannelId,
+        deleted_messages_ids: Vec<MessageId>,
+        guild_id: Option<GuildId>,
+    ) {
+        if guild_id.is_none() {
+            // Ignore DMs
+            return;
+        };
+        if deleted_messages_ids.is_empty() {
+            return;
+        }
+
+        let ids: Vec<i64> = deleted_messages_ids
+            .iter()
+            .map(|id| id.get() as i64)
+            .collect();
+
+        // Use ANY() with a single array parameter
+        let rows = sqlx::query_as::<_, (i64, String)>(
+            "SELECT DISTINCT user_id, message 
+            FROM messages 
+            WHERE id = ANY($1)
+            AND LENGTH(message) >= 5"
+        )
+        .bind(&ids) 
+        .fetch_all(&self.pool)
+        .await
+        .unwrap_or_else(|e| {
+            log::error!("Failed to fetch messages: {}", e);
+            vec![]
+        });
+
+        let mut messages: Vec<(u64, String)> = Vec::new();
+        for row in rows {
+            let (id, msg) = row;
+            messages.push((id as u64, msg));
+        }
+
+        let channel = self.config.deleted_msg_channel;
+        let msg = messages::build_bulk_delete_message(messages, channel_id, deleted_messages_ids.len());
+        if let Err(e) = channel.send_message(&ctx, msg).await {
+            log::error!(
+                "Unable to send deleted message to channel {}: {}",
+                channel,
+                e
+            );
+        }
+
+    }
+
 
     async fn ready(&self, _ctx: Context, _ready: Ready) {
         log::info!("Bot is online and watching for invites coming in");

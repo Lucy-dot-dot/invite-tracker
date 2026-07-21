@@ -602,14 +602,30 @@ async fn message_delete (
             vec![]
         });
 
-        let mut messages: Vec<(u64, String)> = Vec::new();
-        for row in rows {
-            let (id, msg) = row;
-            messages.push((id as u64, msg));
+        // group by user first
+        let mut messages_by_user: HashMap<UserId, Vec<String>> = HashMap::new();
+        for (id, msg) in rows {
+            messages_by_user
+                .entry(UserId::new(id as u64))
+                .or_insert_with(Vec::new)
+                .push(msg);
+        }
+
+
+        let mut messages_with_user = Vec::new();
+        
+        for (user_id, messages) in messages_by_user {
+            let user = user_id.to_user(&ctx).await.ok();
+            messages_with_user.push((user_id, user, messages));
         }
 
         let channel = self.config.deleted_msg_channel;
-        let msg = messages::build_bulk_delete_message(messages, channel_id, deleted_messages_ids.len());
+        let msg = messages::build_bulk_delete_message(
+                messages_with_user,
+                channel_id.to_channel(&ctx).await.ok(),
+                channel_id,
+                deleted_messages_ids.len()
+            );
         if let Err(e) = channel.send_message(&ctx, msg).await {
             log::error!(
                 "Unable to send deleted message to channel {}: {}",

@@ -351,32 +351,37 @@ pub fn build_deleted_message(
 }
 
 pub fn build_bulk_delete_message(
-    messages: Vec<(u64, String)>,
-    channel: ChannelId,
+    messages: Vec<(UserId, Option<User>, Vec<String>)>,
+    channel: Option<Channel>,
+    channel_id: ChannelId,
     count: usize
 ) -> CreateMessage {
 
     let mut content = String::new();
 
-    let mut current_user_id: u64 = 0;
+    for (user_id, user, messages) in messages {
+        content.push_str(
+            &match user {
+                Some(user) => format!("-# **<@{user_id}>({}):**\n", user.name),
+                None => format!("-# **<@{user_id}>:**\n")
+            }
+        );
 
-    for (user_id, message) in messages {
-        if user_id != current_user_id {
-            content.push_str(&format!("-# **<@{user_id}>:**\n"));
-            current_user_id = user_id;
+        for message in messages {
+            let processed_message = message.replace('\n', " ");
+            let processed_message = if processed_message.len() > 100 {
+                    format!("{}...", processed_message[..100].trim())
+                } else {
+                    processed_message
+                };
+            content.push_str(&format!("-# • {processed_message}\n"));
         }
-
-        let processed_message = message.replace('\n', " ");
-        let processed_message = if processed_message.len() > 100 {
-                format!("{}...", processed_message[..100].trim())
-            } else {
-                processed_message
-            };
-        content.push_str(&format!("-# • {processed_message}\n"));
     }
 
+    let channel = format_channel(channel, channel_id);
+
     let embed_description = format!(
-        "**{count} messages deleted in <#{channel}>**\n\n\
+        "**{count} messages deleted in {channel}**\n\n\
          {content}"
     );
 

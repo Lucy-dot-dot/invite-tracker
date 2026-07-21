@@ -1,10 +1,53 @@
 use humantime::format_duration;
 use serenity::all::{
-    ChannelId, Colour, CreateEmbed, CreateEmbedAuthor, CreateMessage, GuildId, InviteCreateEvent, Member, MessageId, User
+    Channel, ChannelId, Colour, CreateEmbed, CreateEmbedAuthor, CreateMessage, GuildId, InviteCreateEvent, Member, MessageId, User, UserId
 };
 use time::OffsetDateTime;
 
 use super::datastructures::UsedInvite;
+
+
+fn build_author_info(
+    user: Option<User>,
+    user_id: Option<UserId>,
+) -> (String, CreateEmbedAuthor) {
+    match (user, user_id) {
+            (Some(user), _) => {
+                let msg = format!(
+                    "Message by <@{}>({})",
+                    user.id.get(),
+                    user.name
+                );
+                let avatar_url = user.avatar_url().unwrap_or_else(|| user.face());
+                let author = CreateEmbedAuthor::new(user.name).icon_url(avatar_url);
+                (msg, author)
+            }
+            (None, Some(id)) => {
+                let msg = format!("Message by <@{id}>");
+                let author = CreateEmbedAuthor::new(id.to_string());
+                (msg, author)
+            }
+            (None, None) => {
+                let msg = "Unknown message".to_string();
+                let author = CreateEmbedAuthor::new("unknown");
+                (msg, author)
+            }
+        }
+}
+fn format_channel(
+    channel: Option<Channel>,
+    channel_id: ChannelId
+) -> String {
+    match channel {
+        Some(Channel::Guild(gc)) => format!("<#{channel_id}>({})", gc.name),
+        Some(Channel::Private(pc)) => {
+            let recipient = pc.recipient;
+            format!("DM with <@{}>({})", recipient.id.get(), recipient.name)
+        }
+        Some(_) => "unknown channel".to_string(),
+        None => format!("<#{channel_id}>"),
+}
+}
 
 pub fn build_join_message(
     new_member: &Member,
@@ -199,48 +242,29 @@ pub fn build_invite_message(data: &InviteCreateEvent) -> CreateMessage {
 
 pub fn build_edited_message(
     user: Option<User>,
-    message: MessageId,
-    channel: ChannelId,
+    user_id: Option<UserId>,
+    channel: Option<Channel>,
+    channel_id: ChannelId,
     guild: GuildId,
-    content: Option<String>,
-    edits: i32
+    message_id: MessageId,
+    content: String,
+    edits: i32,
 ) -> CreateMessage {
-    let created = message.created_at().unix_timestamp();
+    let created = message_id.created_at().unix_timestamp();
 
-    let header: String;
+    let (message_author, embed_author) = build_author_info(user, user_id);
 
-    let embed_author =
-        if let Some(user) = user {
-            let avatar_url = user
-                .avatar_url()
-                .unwrap_or_else(|| user.face());
-            header = format!("**Message by <@{user_id}>({username}) edited in <#{channel}>** Previous content:",
-                user_id = user.id.get(),
-                username = user.name,
-            );
-          CreateEmbedAuthor::new(user.name).icon_url(avatar_url)
-        } else {
-            header = format!("**Unknown message edited in <#{channel}>**  Previous content:");
-            CreateEmbedAuthor::new("unknown")
-        };
-    
-    let content = 
-        if let Some(content) = content {
-            content
-        } else {
-            "*Message content not available*".to_string()
-        };
+    let channel = format_channel(channel, channel_id);
 
-    let edited_string = if edits > 1 {
-        format!(" (edited {edits} times)")
-    } else {
-        "".to_string()
+    let edited_string = match edits {
+        1.. => format!(" (edited {edits} times)"),
+        _ => "".to_string()
     };
 
-    let message_link = format!("https://discord.com/channels/{guild}/{channel}/{message}");
+    let message_link = format!("https://discord.com/channels/{guild}/{channel}/{message_id}");
 
     let embed_description = format!(
-        "{header}\n\
+        "**{message_author} edited in {channel}**\n\
          {content}\n\n\
          -# Posted <t:{created}:f>{edited_string}\n\
          -# [Jump to message]({message_link})"
@@ -257,55 +281,40 @@ pub fn build_edited_message(
 
 pub fn build_deleted_message(
     user: Option<User>,
-    message: MessageId,
-    channel: ChannelId,
+    user_id: Option<UserId>,
+    channel: Option<Channel>,
+    channel_id: ChannelId,
     guild: GuildId,
+    message_id: MessageId,
     content: Option<String>,
     attachments: Option<String>,
     edits: i32
 ) -> CreateMessage {
-    let created = message.created_at().unix_timestamp();
+    let created = message_id.created_at().unix_timestamp();
 
-    let header: String;
+    let (message_author, embed_author) = build_author_info(user, user_id);
 
-    let embed_author =
-        if let Some(user) = user {
-            let avatar_url = user
-                .avatar_url()
-                .unwrap_or_else(|| user.face());
-            header = format!("**Message by <@{user_id}>({username}) deleted in <#{channel}>**",
-                user_id = user.id.get(),
-                username = user.name,
-            );
-          CreateEmbedAuthor::new(user.name).icon_url(avatar_url)
-        } else {
-            header = format!("**Unknown message deleted in <#{channel}>**");
-            CreateEmbedAuthor::new("unknown")
-        };
+    let channel = format_channel(channel, channel_id);
     
-    let content = 
-        if let Some(content) = content {
-            content
-        } else {
-            "*Message content not available*".to_string()
-        };
+    let content = match content {
+        Some(content) => content,
+        None => "*Message content not available*".to_string()
+    };
 
     let now = OffsetDateTime::now_utc().unix_timestamp();
     let formatted_age =
         format_duration(std::time::Duration::new((now - created) as u64, 0)).to_string();
 
-    let edited_string = if edits == 0 {
-        "".to_string()
-    } else if edits == 1 {
-        " (edited)".to_string()
-    } else {
-        format!(" (edited {edits} times)")
+    let edited_string = match edits {
+        0 => "".to_string(),
+        1 => " (edited)".to_string(),
+        _ =>  format!(" (edited {edits} times)")
     };
 
-    let message_link = format!("https://discord.com/channels/{guild}/{channel}/{message}");
+    let message_link = format!("https://discord.com/channels/{guild}/{channel}/{message_id}");
 
     let embed_description = format!(
-        "{header}\n\
+        "**{message_author} deleted in {channel}**\n\
          {content}\n\n\
          -# Posted <t:{created}:f> up for `{formatted_age}`{edited_string}\n\
          -# [Jump to surrounding]({message_link})"

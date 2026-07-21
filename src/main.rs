@@ -419,7 +419,7 @@ impl EventHandler for Handler {
                 edits = edits + 1
             WHERE id = $1
             RETURNING 
-                OLD.message, edits",
+                user_id, OLD.message, edits",
         )
         .bind(event.id.get() as i64)
         .bind(&event.content)
@@ -456,8 +456,9 @@ impl EventHandler for Handler {
             }
         };
 
-        let old_message: Option<String> = result.get(0);
-        let edits: i32 = result.get(1);
+        let user_id: i64 = result.get(0);
+        let old_message: Option<String> = result.get(1);
+        let edits: i32 = result.get(2);
 
         if let Some(new_message) = event.content && let Some(old_message) = old_message {
             if old_message.is_empty() {
@@ -471,7 +472,17 @@ impl EventHandler for Handler {
             }
 
             let channel = self.config.deleted_msg_channel;
-            let msg = messages::build_edited_message(event.author, event.id, event.channel_id, guild, Some(old_message), edits);
+            let msg = messages::build_edited_message(
+                    event.author, 
+                    Some(UserId::new(user_id as u64)),
+                    event.channel_id.to_channel(&ctx).await.ok(),
+                    event.channel_id,
+                    guild,
+                    event.id,
+                    old_message,
+                    edits
+                );
+
             if let Err(e) = channel.send_message(&ctx, msg).await {
                 log::error!(
                     "Unable to send edited message to channel {}: {}",
@@ -511,15 +522,23 @@ async fn message_delete (
         let (user_id, content, attachments, edits) = row
             .as_ref()
             .map(|r| (
-                Some(r.get::<i64, _>(0)),
+                r.get::<i64, _>(0),
                 r.get::<Option<String>, _>(1),
                 r.get::<Option<String>, _>(2),
                 r.get::<i32, _>(3),
             ))
-            .unwrap_or((None, None, None, 0));
+            .unwrap_or((0, None, None, 0));
+
+            
+        let user_id = if user_id != 0 {
+            Some(UserId::new(user_id as u64))
+        } else {
+            None
+        };
+
 
         let user = match user_id {
-            Some(uid) => UserId::new(uid as u64).to_user(&ctx).await.ok(),
+            Some(user_id) => user_id.to_user(&ctx).await.ok(),
             None => None,
         };
 
@@ -528,7 +547,17 @@ async fn message_delete (
         }
 
         let channel = self.config.deleted_msg_channel;
-        let msg = messages::build_deleted_message(user, deleted_message_id, channel_id, guild_id, content, attachments, edits);
+        let msg = messages::build_deleted_message(
+                user, 
+                user_id,
+                channel_id.to_channel(&ctx).await.ok(),
+                channel_id,
+                guild_id,
+                deleted_message_id,
+                content,
+                attachments,
+                edits
+            );
         if let Err(e) = channel.send_message(&ctx, msg).await {
             log::error!(
                 "Unable to send deleted message to channel {}: {}",

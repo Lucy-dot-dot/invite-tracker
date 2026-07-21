@@ -14,7 +14,7 @@ fn build_author_info(
     match (user, user_id) {
             (Some(user), _) => {
                 let msg = format!(
-                    "Message by <@{}>({})",
+                    "**Message by** <@{}>({})",
                     user.id.get(),
                     user.name
                 );
@@ -23,12 +23,12 @@ fn build_author_info(
                 (msg, author)
             }
             (None, Some(id)) => {
-                let msg = format!("Message by <@{id}>");
+                let msg = format!("**Message by** <@{id}>");
                 let author = CreateEmbedAuthor::new(id.to_string());
                 (msg, author)
             }
             (None, None) => {
-                let msg = "Unknown message".to_string();
+                let msg = "**Unknown message**".to_string();
                 let author = CreateEmbedAuthor::new("unknown");
                 (msg, author)
             }
@@ -264,7 +264,7 @@ pub fn build_edited_message(
     let message_link = format!("https://discord.com/channels/{guild}/{channel}/{message_id}");
 
     let embed_description = format!(
-        "**{message_author} edited in {channel}**\n\
+        "**{message_author} **edited in** {channel}**\n\
          {content}\n\n\
          -# Posted <t:{created}:f>{edited_string}\n\
          -# [Jump to message]({message_link})"
@@ -314,7 +314,7 @@ pub fn build_deleted_message(
     let message_link = format!("https://discord.com/channels/{guild}/{channel}/{message_id}");
 
     let embed_description = format!(
-        "**{message_author} deleted in {channel}**\n\
+        "**{message_author} **deleted in** {channel}**\n\
          {content}\n\n\
          -# Posted <t:{created}:f> up for `{formatted_age}`{edited_string}\n\
          -# [Jump to surrounding]({message_link})"
@@ -362,8 +362,8 @@ pub fn build_bulk_delete_message(
     for (user_id, user, messages) in messages {
         content.push_str(
             &match user {
-                Some(user) => format!("-# **<@{user_id}>({}):**\n", user.name),
-                None => format!("-# **<@{user_id}>:**\n")
+                Some(user) => format!("<@{user_id}>({}):\n", user.name),
+                None => format!("<@{user_id}>:\n")
             }
         );
 
@@ -381,7 +381,7 @@ pub fn build_bulk_delete_message(
     let channel = format_channel(channel, channel_id);
 
     let embed_description = format!(
-        "**{count} messages deleted in {channel}**\n\n\
+        "**{count} messages deleted in** {channel}\n\n\
          {content}"
     );
 

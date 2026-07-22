@@ -1,0 +1,8 @@
+token = "" # Discord bot token
+join_leave_channel = 0000000000000000000 # Used for join, leave and invite creation messages
+deleted_msg_channel = 0000000000000000000 # Used for message delete, message edits and bulk message delete
+edited_msg_distance = 10  # Minimum levenshtein distance between the old and new message. Anything below this won't get logged in the channel above
+
+# Options to reduce clutter, only apply to bulk message deletes
+bulk_delete_min_length = 5 # Messages below this length won't be shown at all
+bulk_delete_max_length = 100 # Messages above this will be truncated with elipses...

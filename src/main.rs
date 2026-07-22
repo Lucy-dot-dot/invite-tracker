@@ -31,6 +31,8 @@ struct Config {
     join_leave_channel: ChannelId,
     deleted_msg_channel: ChannelId,
     edited_msg_distance: u32,
+    bulk_delete_min_length: usize,
+    bulk_delete_max_length: usize,
     #[serde(default)]
     database_url: String,
 }
@@ -414,11 +416,11 @@ impl EventHandler for Handler {
         }
 
         let result = sqlx::query(
-            "UPDATE messages SET
-                message = COALESCE($2, message),
-                edits = edits + 1
-            WHERE id = $1
-            RETURNING 
+            "UPDATE messages SET \
+                message = COALESCE($2, message), \
+                edits = edits + 1 \
+            WHERE id = $1 \
+            RETURNING \
                 user_id, OLD.message, edits",
         )
         .bind(event.id.get() as i64)
@@ -507,8 +509,8 @@ async fn message_delete (
         };
 
         let row = sqlx::query(
-            "SELECT user_id, message, embeds, edits 
-             FROM messages
+            "SELECT user_id, message, embeds, edits \
+             FROM messages \
              WHERE id = $1",
         )
         .bind(deleted_message_id.get() as i64)
@@ -589,10 +591,9 @@ async fn message_delete (
 
         // Use ANY() with a single array parameter
         let rows = sqlx::query_as::<_, (i64, String)>(
-            "SELECT DISTINCT user_id, message 
-            FROM messages 
-            WHERE id = ANY($1)
-            AND LENGTH(message) >= 5"
+            "SELECT DISTINCT user_id, message \
+            FROM messages \
+            WHERE id = ANY($1)"
         )
         .bind(&ids) 
         .fetch_all(&self.pool)
@@ -605,10 +606,22 @@ async fn message_delete (
         // group by user first
         let mut messages_by_user: HashMap<UserId, Vec<String>> = HashMap::new();
         for (id, msg) in rows {
-            messages_by_user
+            let user_messages = messages_by_user
                 .entry(UserId::new(id as u64))
-                .or_insert_with(Vec::new)
-                .push(msg);
+                .or_insert_with(Vec::new);
+
+            if msg.len() < self.config.bulk_delete_min_length {
+                continue;
+            }
+
+            let msg = msg.replace('\n', " ");
+            let msg = if msg.len() > self.config.bulk_delete_max_length {
+                msg[..self.config.bulk_delete_max_length].to_string()
+            } else {
+                msg
+            };
+
+            user_messages.push(msg);
         }
 
 

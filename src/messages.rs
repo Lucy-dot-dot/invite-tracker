@@ -359,22 +359,24 @@ pub fn build_bulk_delete_message(
 
     let mut content = String::new();
 
-    for (user_id, user, messages) in messages {
+    for (user_id, user, user_messages) in messages {
         content.push_str(
             &match user {
-                Some(user) => format!("<@{user_id}>({}):\n", user.name),
-                None => format!("<@{user_id}>:\n")
+                Some(user) => format!("<@{user_id}>({})", user.name),
+                None => format!("<@{user_id}>")
             }
         );
 
-        for message in messages {
-            let processed_message = message.replace('\n', " ");
-            let processed_message = if processed_message.len() > 100 {
-                    format!("{}...", processed_message[..100].trim())
-                } else {
-                    processed_message
-                };
-            content.push_str(&format!("-# • {processed_message}\n"));
+        // if there are no messages do not put the colon
+        if user_messages.len() == 0 {
+            content.push_str("\n");
+            continue;
+        } else {
+            content.push_str(":\n");
+        }
+
+        for message in user_messages {
+            content.push_str(&format!("-# • {message}\n"));
         }
     }
 

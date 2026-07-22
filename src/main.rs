@@ -616,7 +616,7 @@ async fn message_delete (
 
             let msg = msg.replace('\n', " ");
             let msg = if msg.len() > self.config.bulk_delete_max_length {
-                format!("{}...", msg[..self.config.bulk_delete_max_length].to_string())
+                format!("{}...", msg[..self.config.bulk_delete_max_length].trim())
             } else {
                 msg
             };

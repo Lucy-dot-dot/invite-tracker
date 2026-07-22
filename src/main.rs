@@ -1,3 +1,4 @@
+use discord_logging::db::purge_thread;
 use log::LevelFilter;
 use log4rs::append::console::ConsoleAppender;
 use log4rs::append::rolling_file::{
@@ -33,6 +34,8 @@ struct Config {
     edited_msg_distance: u32,
     bulk_delete_min_length: usize,
     bulk_delete_max_length: usize,
+    purge_interval_hours: u32,
+    purge_retention_days: u32,
     #[serde(default)]
     database_url: String,
 }
@@ -719,8 +722,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let handler = Handler {
         config: Arc::new(config),
-        pool,
+        pool: pool.clone(),
     };
+
+    let max_age_seconds = handler.config.purge_retention_days * 24 * 60 * 60;
+    let seconds_interval = handler.config.purge_interval_hours * 60 * 60;
+    if max_age_seconds != 0 && seconds_interval != 0 {
+        tokio::spawn(purge_thread(pool, max_age_seconds, seconds_interval));
+    }
 
     let intents = GatewayIntents::GUILDS
         | GatewayIntents::GUILD_MEMBERS

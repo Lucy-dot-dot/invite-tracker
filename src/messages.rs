@@ -141,8 +141,7 @@ pub fn build_join_message(
         })
         .description(embed_description)
         .thumbnail(&avatar_url)
-        .field("Display Name", new_member.display_name().to_string(), true)
-        .field("Username", new_member.user.name.clone(), true);
+        .field("Display Name", new_member.display_name().to_string(), true);
 
     if join_amount > 0 {
         embed = embed.field("Rejoins", join_amount.to_string(), true);

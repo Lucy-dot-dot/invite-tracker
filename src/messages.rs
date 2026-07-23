@@ -254,17 +254,17 @@ pub fn build_edited_message(
 
     let (message_author, embed_author) = build_author_info(user, user_id);
 
-    let channel = format_channel(channel, channel_id);
+    let formatted_channel = format_channel(channel, channel_id);
 
     let edited_string = match edits {
         1.. => format!(" (edited {edits} times)"),
         _ => "".to_string()
     };
 
-    let message_link = format!("https://discord.com/channels/{guild}/{channel}/{message_id}");
+    let message_link = format!("https://discord.com/channels/{guild}/{channel_id}/{message_id}");
 
     let embed_description = format!(
-        "**{message_author} **edited in** {channel}**\n\
+        "{message_author} **edited in** {formatted_channel}\n\
          {content}\n\n\
          -# Posted <t:{created}:f>{edited_string}\n\
          -# [Jump to message]({message_link})"
@@ -294,7 +294,7 @@ pub fn build_deleted_message(
 
     let (message_author, embed_author) = build_author_info(user, user_id);
 
-    let channel = format_channel(channel, channel_id);
+    let formatted_channel = format_channel(channel, channel_id);
     
     let content = match content {
         Some(content) => content,
@@ -311,10 +311,10 @@ pub fn build_deleted_message(
         _ =>  format!(" (edited {edits} times)")
     };
 
-    let message_link = format!("https://discord.com/channels/{guild}/{channel}/{message_id}");
+    let message_link = format!("https://discord.com/channels/{guild}/{channel_id}/{message_id}");
 
     let embed_description = format!(
-        "**{message_author} **deleted in** {channel}**\n\
+        "{message_author} **deleted in** {formatted_channel}\n\
          {content}\n\n\
          -# Posted <t:{created}:f> up for `{formatted_age}`{edited_string}\n\
          -# [Jump to surrounding]({message_link})"
@@ -380,10 +380,10 @@ pub fn build_bulk_delete_message(
         }
     }
 
-    let channel = format_channel(channel, channel_id);
+    let formatted_channel = format_channel(channel, channel_id);
 
     let embed_description = format!(
-        "**{count} messages deleted in** {channel}\n\n\
+        "**{count} messages deleted in** {formatted_channel}\n\n\
          {content}"
     );
 

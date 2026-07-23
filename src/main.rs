@@ -389,7 +389,7 @@ impl EventHandler for Handler {
         let attachments_string = self.format_attachments(message.attachments);
             
         if let Err(e) = sqlx::query(
-            "INSERT INTO messages (id, user_id, message, embeds) \
+            "INSERT INTO messages (id, user_id, message, attachments) \
              VALUES ($1, $2, $3, $4)",
         )
         .bind(message.id.get() as i64)
@@ -440,13 +440,13 @@ impl EventHandler for Handler {
                 // If we have the author, store it as a new message
                 if let Some(author) = event.author {
                     if let Err(e) = sqlx::query(
-                        "INSERT INTO messages (id, user_id, message, embeds, edits) \
+                        "INSERT INTO messages (id, user_id, message, attachments, edits) \
                     VALUES ($1, $2, $3, $4, 1)",
                     )
                     .bind(event.id.get() as i64)
                     .bind(author.id.get() as i64)
-                    .bind(&event.content)
-                    .bind(&attachments_string)
+                    .bind(event.content)
+                    .bind(attachments_string)
                     .execute(&self.pool)
                     .await
                         {
@@ -512,7 +512,7 @@ async fn message_delete (
         };
 
         let row = sqlx::query(
-            "SELECT user_id, message, embeds, edits \
+            "SELECT user_id, message, attachments, edits \
              FROM messages \
              WHERE id = $1",
         )
@@ -523,33 +523,34 @@ async fn message_delete (
             log::error!("Failed to fetch message: {}", e);
             None
         });
+        
 
         let (user_id, content, attachments, edits) = row
             .as_ref()
             .map(|r| (
                 r.get::<i64, _>(0),
-                r.get::<Option<String>, _>(1),
+                Some(r.get::<String, _>(1)),
                 r.get::<Option<String>, _>(2),
                 r.get::<i32, _>(3),
             ))
             .unwrap_or((0, None, None, 0));
 
             
-        let user_id = if user_id != 0 {
-            Some(UserId::new(user_id as u64))
+        let (user_id, user) = if user_id != 0 {
+            let user_id = UserId::new(user_id as u64);
+            let user = user_id.to_user(&ctx).await.ok();
+
+            // Ignore bots
+            if let Some(user) = &user && user.bot {
+                return;
+            }
+
+            ( Some(user_id), user )
         } else {
-            None
+            (None, None)
         };
 
 
-        let user = match user_id {
-            Some(user_id) => user_id.to_user(&ctx).await.ok(),
-            None => None,
-        };
-
-        if let Some(user) = &user && user.bot {
-            return;
-        }
 
         let channel = self.config.deleted_msg_channel;
         let msg = messages::build_deleted_message(

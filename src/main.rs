@@ -466,8 +466,8 @@ impl EventHandler for Handler {
         let edits: i32 = result.get(2);
 
         if let Some(new_message) = event.content && let Some(old_message) = old_message {
-            if old_message.is_empty() {
-                // If the message has no content there's no point in logging it
+            if old_message.is_empty() || new_message.starts_with(old_message.as_str()) {
+                // If the message has no content or does not remove any content, there's no point in logging
                 return;
             }
             let similarity = levenshtein_limit(new_message.as_str(), old_message.as_str(), self.config.edited_msg_distance);

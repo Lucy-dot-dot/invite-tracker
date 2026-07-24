@@ -1,11 +1,10 @@
-use humantime::format_duration;
 use serenity::all::{
     Channel, ChannelId, Colour, CreateEmbed, CreateEmbedAuthor, CreateMessage, GuildId, InviteCreateEvent, Member, MessageId, User, UserId
 };
 use time::OffsetDateTime;
 
 use super::datastructures::UsedInvite;
-
+use super::format_time::format_time_diff;
 
 fn build_author_info(
     user: Option<User>,
@@ -61,7 +60,7 @@ pub fn build_join_message(
     let account_age = now - account_created;
 
     let account_created_ago_string =
-        format_duration(std::time::Duration::new(account_age as u64, 0)).to_string();
+        format_time_diff(account_age as u64, 2);
 
     // Suspicious-join indicators. Each pushes a human-readable reason; if any are present the
     // embed is recoloured amber and a "Suspicious" field is added so it stands out in the log.
@@ -162,7 +161,7 @@ pub fn build_leave_message(user: &User, last_join: Option<i64>) -> CreateMessage
         Some(ts) => {
             let now = OffsetDateTime::now_utc().unix_timestamp();
             let formatted_member_age =
-                format_duration(std::time::Duration::new((now - ts) as u64, 0)).to_string();
+                format_time_diff((now - ts) as u64, 2);
             format!(
                 "**Joined:** <t:{ts}:f>\n\
                     **Was member for:** `{formatted_member_age}`"
@@ -204,7 +203,7 @@ pub fn build_invite_message(data: &InviteCreateEvent) -> CreateMessage {
             "`{duration}`\n\
                 **Expires:** <t:{expires_at}:R>",
             duration =
-                format_duration(std::time::Duration::new(data.max_age as u64, 0)).to_string()
+                format_time_diff(data.max_age as u64, 2)
         )
     };
     let max_uses = if data.max_uses == 0 {
@@ -302,7 +301,7 @@ pub fn build_deleted_message(
 
     let now = OffsetDateTime::now_utc().unix_timestamp();
     let formatted_age =
-        format_duration(std::time::Duration::new((now - created) as u64, 0)).to_string();
+        format_time_diff((now - created) as u64, 3);
 
     let edited_string = match edits {
         0 => "".to_string(),

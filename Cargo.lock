@@ -408,7 +408,6 @@ dependencies = [
 name = "discord-logging"
 version = "0.1.0"
 dependencies = [
- "humantime",
  "log",
  "log4rs",
  "serde",

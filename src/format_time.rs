@@ -4,9 +4,8 @@ const TIME_UNITS: &[(&str, u64); 6] = &[
     (" day", 24 * 60 * 60),
     ("h", 60 * 60),
     ("m", 60),
-    ("s", 1)
+    ("s", 1),
 ];
-
 
 pub fn format_time_diff(seconds: u64, precision_level: u8) -> String {
     let mut time_string = String::new();

@@ -1,42 +1,33 @@
 use serenity::all::{
-    Channel, ChannelId, Colour, CreateEmbed, CreateEmbedAuthor, CreateMessage, GuildId, InviteCreateEvent, Member, MessageId, User, UserId
+    Channel, ChannelId, Colour, CreateEmbed, CreateEmbedAuthor, CreateMessage, GuildId,
+    InviteCreateEvent, Member, MessageId, User, UserId,
 };
 use time::OffsetDateTime;
 
 use super::datastructures::UsedInvite;
 use super::format_time::format_time_diff;
 
-fn build_author_info(
-    user: Option<User>,
-    user_id: Option<UserId>,
-) -> (String, CreateEmbedAuthor) {
+fn build_author_info(user: Option<User>, user_id: Option<UserId>) -> (String, CreateEmbedAuthor) {
     match (user, user_id) {
-            (Some(user), _) => {
-                let msg = format!(
-                    "**Message by** <@{}>({})",
-                    user.id.get(),
-                    user.name
-                );
-                let avatar_url = user.avatar_url().unwrap_or_else(|| user.face());
-                let author = CreateEmbedAuthor::new(user.name).icon_url(avatar_url);
-                (msg, author)
-            }
-            (None, Some(id)) => {
-                let msg = format!("**Message by** <@{id}>");
-                let author = CreateEmbedAuthor::new(id.to_string());
-                (msg, author)
-            }
-            (None, None) => {
-                let msg = "**Unknown message**".to_string();
-                let author = CreateEmbedAuthor::new("unknown");
-                (msg, author)
-            }
+        (Some(user), _) => {
+            let msg = format!("**Message by** <@{}>({})", user.id.get(), user.name);
+            let avatar_url = user.avatar_url().unwrap_or_else(|| user.face());
+            let author = CreateEmbedAuthor::new(user.name).icon_url(avatar_url);
+            (msg, author)
         }
+        (None, Some(id)) => {
+            let msg = format!("**Message by** <@{id}>");
+            let author = CreateEmbedAuthor::new(id.to_string());
+            (msg, author)
+        }
+        (None, None) => {
+            let msg = "**Unknown message**".to_string();
+            let author = CreateEmbedAuthor::new("unknown");
+            (msg, author)
+        }
+    }
 }
-fn format_channel(
-    channel: Option<Channel>,
-    channel_id: ChannelId
-) -> String {
+fn format_channel(channel: Option<Channel>, channel_id: ChannelId) -> String {
     match channel {
         Some(Channel::Guild(gc)) => format!("<#{channel_id}>({})", gc.name),
         Some(Channel::Private(pc)) => {
@@ -45,7 +36,7 @@ fn format_channel(
         }
         Some(_) => "unknown channel".to_string(),
         None => format!("<#{channel_id}>"),
-}
+    }
 }
 
 pub fn build_join_message(
@@ -59,8 +50,7 @@ pub fn build_join_message(
     let now = OffsetDateTime::now_utc().unix_timestamp();
     let account_age = now - account_created;
 
-    let account_created_ago_string =
-        format_time_diff(account_age as u64, 2);
+    let account_created_ago_string = format_time_diff(account_age as u64, 2);
 
     // Suspicious-join indicators. Each pushes a human-readable reason; if any are present the
     // embed is recoloured amber and a "Suspicious" field is added so it stands out in the log.
@@ -160,8 +150,7 @@ pub fn build_leave_message(user: &User, last_join: Option<i64>) -> CreateMessage
     let membership = match last_join {
         Some(ts) => {
             let now = OffsetDateTime::now_utc().unix_timestamp();
-            let formatted_member_age =
-                format_time_diff((now - ts) as u64, 2);
+            let formatted_member_age = format_time_diff((now - ts) as u64, 2);
             format!(
                 "**Joined:** <t:{ts}:f>\n\
                     **Was member for:** `{formatted_member_age}`"
@@ -202,8 +191,7 @@ pub fn build_invite_message(data: &InviteCreateEvent) -> CreateMessage {
         format!(
             "`{duration}`\n\
                 **Expires:** <t:{expires_at}:R>",
-            duration =
-                format_time_diff(data.max_age as u64, 2)
+            duration = format_time_diff(data.max_age as u64, 2)
         )
     };
     let max_uses = if data.max_uses == 0 {
@@ -237,7 +225,6 @@ pub fn build_invite_message(data: &InviteCreateEvent) -> CreateMessage {
     CreateMessage::new().embed(embed)
 }
 
-
 pub fn build_edited_message(
     user: Option<User>,
     user_id: Option<UserId>,
@@ -256,7 +243,7 @@ pub fn build_edited_message(
 
     let edited_string = match edits {
         1.. => format!(" (edited {edits} times)"),
-        _ => "".to_string()
+        _ => "".to_string(),
     };
 
     let message_link = format!("https://discord.com/channels/{guild}/{channel_id}/{message_id}");
@@ -286,27 +273,26 @@ pub fn build_deleted_message(
     message_id: MessageId,
     content: Option<String>,
     attachments: Option<String>,
-    edits: i32
+    edits: i32,
 ) -> CreateMessage {
     let created = message_id.created_at().unix_timestamp();
 
     let (message_author, embed_author) = build_author_info(user, user_id);
 
     let formatted_channel = format_channel(channel, channel_id);
-    
+
     let content = match content {
         Some(content) => content,
-        None => "*Message content not available*".to_string()
+        None => "*Message content not available*".to_string(),
     };
 
     let now = OffsetDateTime::now_utc().unix_timestamp();
-    let formatted_age =
-        format_time_diff((now - created) as u64, 3);
+    let formatted_age = format_time_diff((now - created) as u64, 3);
 
     let edited_string = match edits {
         0 => "".to_string(),
         1 => " (edited)".to_string(),
-        _ =>  format!(" (edited {edits} times)")
+        _ => format!(" (edited {edits} times)"),
     };
 
     let message_link = format!("https://discord.com/channels/{guild}/{channel_id}/{message_id}");
@@ -324,17 +310,16 @@ pub fn build_deleted_message(
         .color(Colour::new(0xFF0000))
         .description(embed_description);
 
-
     let mut message = CreateMessage::new();
 
     if let Some(attachments) = attachments {
         let attachments: Vec<&str> = attachments.split("\n").collect();
-        
+
         if !attachments.is_empty() {
             // First attachment goes in the main embed
-            embed = embed.thumbnail(attachments[0]); 
+            embed = embed.thumbnail(attachments[0]);
             message = message.embed(embed);
-            
+
             // Any additional attachments get their own embeds
             for attachment in attachments.iter().skip(1) {
                 let extra_embed = CreateEmbed::new()
@@ -343,7 +328,7 @@ pub fn build_deleted_message(
                 message = message.add_embed(extra_embed);
             }
             return message;
-        } 
+        }
     }
     message.embed(embed)
 }
@@ -352,18 +337,15 @@ pub fn build_bulk_delete_message(
     messages: Vec<(UserId, Option<User>, Vec<String>)>,
     channel: Option<Channel>,
     channel_id: ChannelId,
-    count: usize
+    count: usize,
 ) -> CreateMessage {
-
     let mut content = String::new();
 
     for (user_id, user, user_messages) in messages {
-        content.push_str(
-            &match user {
-                Some(user) => format!("<@{user_id}>({})", user.name),
-                None => format!("<@{user_id}>")
-            }
-        );
+        content.push_str(&match user {
+            Some(user) => format!("<@{user_id}>({})", user.name),
+            None => format!("<@{user_id}>"),
+        });
 
         // if there are no messages do not put the colon
         if user_messages.len() == 0 {

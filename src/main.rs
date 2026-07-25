@@ -12,7 +12,8 @@ use log4rs::encode::pattern::PatternEncoder;
 use serde::Deserialize;
 use serenity::Client;
 use serenity::all::{
-    Attachment, ChannelId, Context, Guild, GuildId, InviteCreateEvent, InviteDeleteEvent, Member, Message, MessageId, MessageUpdateEvent, Ready, RichInvite, User, UserId,
+    Attachment, ChannelId, Context, Guild, GuildId, InviteCreateEvent, InviteDeleteEvent, Member,
+    Message, MessageId, MessageUpdateEvent, Ready, RichInvite, User, UserId,
 };
 use serenity::futures::StreamExt;
 use serenity::prelude::{EventHandler, GatewayIntents};
@@ -88,7 +89,7 @@ impl Handler {
         }
     }
 
-    fn format_attachments (&self, attachments: Vec<Attachment>) -> Option<String>{
+    fn format_attachments(&self, attachments: Vec<Attachment>) -> Option<String> {
         let urls: Vec<&str> = attachments
             .iter()
             .filter(|attachment| {
@@ -100,7 +101,7 @@ impl Handler {
             })
             .map(|attachment| attachment.proxy_url.as_str())
             .collect();
-        
+
         if urls.is_empty() {
             None
         } else {
@@ -387,7 +388,7 @@ impl EventHandler for Handler {
 
     async fn message(&self, _ctx: Context, message: Message) {
         let attachments_string = self.format_attachments(message.attachments);
-            
+
         if let Err(e) = sqlx::query(
             "INSERT INTO messages (id, user_id, message, attachments) \
              VALUES ($1, $2, $3, $4)",
@@ -414,7 +415,9 @@ impl EventHandler for Handler {
             return;
         };
 
-        if let Some(author) = &event.author && author.bot {
+        if let Some(author) = &event.author
+            && author.bot
+        {
             return;
         }
 
@@ -434,9 +437,10 @@ impl EventHandler for Handler {
         let result = match result {
             Ok(Some(row)) => row,
             Ok(None) => {
-                    let attachments_string = event.attachments.map(|attachments| {
-                        self.format_attachments(attachments)
-                }).flatten();
+                let attachments_string = event
+                    .attachments
+                    .map(|attachments| self.format_attachments(attachments))
+                    .flatten();
                 // If we have the author, store it as a new message
                 if let Some(author) = event.author {
                     if let Err(e) = sqlx::query(
@@ -449,9 +453,9 @@ impl EventHandler for Handler {
                     .bind(attachments_string)
                     .execute(&self.pool)
                     .await
-                        {
-                            log::error!("Failed to store message: {}", e);
-                        }
+                    {
+                        log::error!("Failed to store message: {}", e);
+                    }
                 }
                 return;
             }
@@ -465,28 +469,34 @@ impl EventHandler for Handler {
         let old_message: Option<String> = result.get(1);
         let edits: i32 = result.get(2);
 
-        if let Some(new_message) = event.content && let Some(old_message) = old_message {
+        if let Some(new_message) = event.content
+            && let Some(old_message) = old_message
+        {
             if old_message.is_empty() || new_message.starts_with(old_message.as_str()) {
                 // If the message has no content or does not remove any content, there's no point in logging
                 return;
             }
-            let similarity = levenshtein_limit(new_message.as_str(), old_message.as_str(), self.config.edited_msg_distance);
+            let similarity = levenshtein_limit(
+                new_message.as_str(),
+                old_message.as_str(),
+                self.config.edited_msg_distance,
+            );
 
-            if similarity < self.config.edited_msg_distance{
+            if similarity < self.config.edited_msg_distance {
                 return;
             }
 
             let channel = self.config.deleted_msg_channel;
             let msg = messages::build_edited_message(
-                    event.author, 
-                    Some(UserId::new(user_id as u64)),
-                    event.channel_id.to_channel(&ctx).await.ok(),
-                    event.channel_id,
-                    guild,
-                    event.id,
-                    old_message,
-                    edits
-                );
+                event.author,
+                Some(UserId::new(user_id as u64)),
+                event.channel_id.to_channel(&ctx).await.ok(),
+                event.channel_id,
+                guild,
+                event.id,
+                old_message,
+                edits,
+            );
 
             if let Err(e) = channel.send_message(&ctx, msg).await {
                 log::error!(
@@ -498,13 +508,12 @@ impl EventHandler for Handler {
         }
     }
 
-
-async fn message_delete (
-    &self,
-    ctx: Context,
-    channel_id: ChannelId,
-    deleted_message_id: MessageId,
-    guild_id: Option<GuildId>,
+    async fn message_delete(
+        &self,
+        ctx: Context,
+        channel_id: ChannelId,
+        deleted_message_id: MessageId,
+        guild_id: Option<GuildId>,
     ) {
         let Some(guild_id) = guild_id else {
             // Ignore DMs
@@ -523,47 +532,47 @@ async fn message_delete (
             log::error!("Failed to fetch message: {}", e);
             None
         });
-        
 
         let (user_id, content, attachments, edits) = row
             .as_ref()
-            .map(|r| (
-                r.get::<i64, _>(0),
-                Some(r.get::<String, _>(1)),
-                r.get::<Option<String>, _>(2),
-                r.get::<i32, _>(3),
-            ))
+            .map(|r| {
+                (
+                    r.get::<i64, _>(0),
+                    Some(r.get::<String, _>(1)),
+                    r.get::<Option<String>, _>(2),
+                    r.get::<i32, _>(3),
+                )
+            })
             .unwrap_or((0, None, None, 0));
 
-            
         let (user_id, user) = if user_id != 0 {
             let user_id = UserId::new(user_id as u64);
             let user = user_id.to_user(&ctx).await.ok();
 
             // Ignore bots
-            if let Some(user) = &user && user.bot {
+            if let Some(user) = &user
+                && user.bot
+            {
                 return;
             }
 
-            ( Some(user_id), user )
+            (Some(user_id), user)
         } else {
             (None, None)
         };
 
-
-
         let channel = self.config.deleted_msg_channel;
         let msg = messages::build_deleted_message(
-                user, 
-                user_id,
-                channel_id.to_channel(&ctx).await.ok(),
-                channel_id,
-                guild_id,
-                deleted_message_id,
-                content,
-                attachments,
-                edits
-            );
+            user,
+            user_id,
+            channel_id.to_channel(&ctx).await.ok(),
+            channel_id,
+            guild_id,
+            deleted_message_id,
+            content,
+            attachments,
+            edits,
+        );
         if let Err(e) = channel.send_message(&ctx, msg).await {
             log::error!(
                 "Unable to send deleted message to channel {}: {}",
@@ -597,9 +606,9 @@ async fn message_delete (
         let rows = sqlx::query_as::<_, (i64, String)>(
             "SELECT DISTINCT user_id, message \
             FROM messages \
-            WHERE id = ANY($1)"
+            WHERE id = ANY($1)",
         )
-        .bind(&ids) 
+        .bind(&ids)
         .fetch_all(&self.pool)
         .await
         .unwrap_or_else(|e| {
@@ -628,9 +637,8 @@ async fn message_delete (
             user_messages.push(msg);
         }
 
-
         let mut messages_with_user = Vec::new();
-        
+
         for (user_id, messages) in messages_by_user {
             let user = user_id.to_user(&ctx).await.ok();
             messages_with_user.push((user_id, user, messages));
@@ -638,11 +646,11 @@ async fn message_delete (
 
         let channel = self.config.deleted_msg_channel;
         let msg = messages::build_bulk_delete_message(
-                messages_with_user,
-                channel_id.to_channel(&ctx).await.ok(),
-                channel_id,
-                deleted_messages_ids.len()
-            );
+            messages_with_user,
+            channel_id.to_channel(&ctx).await.ok(),
+            channel_id,
+            deleted_messages_ids.len(),
+        );
         if let Err(e) = channel.send_message(&ctx, msg).await {
             log::error!(
                 "Unable to send deleted message to channel {}: {}",
@@ -650,9 +658,7 @@ async fn message_delete (
                 e
             );
         }
-
     }
-
 
     async fn ready(&self, _ctx: Context, _ready: Ready) {
         log::info!("Bot is online and watching for invites coming in");

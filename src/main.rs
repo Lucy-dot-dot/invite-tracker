@@ -666,7 +666,7 @@ impl EventHandler for Handler {
 }
 
 fn init_logging() -> Result<(), Box<dyn std::error::Error>> {
-    let pattern = "{d(%Y-%m-%d %H:%M:%S)} {l:5} - {m}{n}";
+    let pattern = "{d(%Y-%m-%d %H:%M:%S)} {M} {l:5} - {m}{n}";
 
     let stdout = ConsoleAppender::builder()
         .encoder(Box::new(PatternEncoder::new(pattern)))

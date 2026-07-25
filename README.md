@@ -30,8 +30,8 @@ Posted every time someone joins the server. Includes:
 - **Invite info** — the invite code used, who created that invite (as a ping + ID), and
   when the invite was created.
 - **Display Name** and **Username** as separate fields.
-- **Rejoins** — how many times this person has joined before (0 on a first-ever join).
-- **Last known join** — shown only on rejoins, as a relative timestamp.
+- **Rejoins** — how many times this person has joined before (not present on a first-ever join).
+- **Last known join** — shown only on rejoins, as a timestamp.
 - The user's avatar as a thumbnail.
 
 If the bot cannot determine which invite was used (rare), it says so explicitly rather
@@ -44,7 +44,7 @@ When a join trips one or more suspicion signals, the embed turns **amber** and g
 
 | Signal | Meaning |
 |--------|---------|
-| Account younger than 24h | Brand-new account — common for alts and raiders. |
+| Account younger than 48h | Brand-new account — common for alts and raiders. |
 | Unusual DM activity | Discord itself has flagged this account for unusual DM behaviour. |
 | No avatar set | The account still has the default Discord avatar. |
 | No display name set | The account has never set a display name. |
@@ -68,6 +68,58 @@ Posted whenever anyone creates a new invite. Includes:
 - The invite **code**.
 - When it was created.
 - When it expires (or "Never" for permanent invites).
+
+---
+
+## Deleted and edited messages
+
+This bot also logs deleted messages, every message sent is logged in the database. Messages by bots are ignored.
+A separate channel is used for these entries.
+
+| Colour    | Meaning           |
+|-----------|-------------------|
+| **Amber** | A a message was edited |
+| **Red**   | A message was delted |
+| **Red**  | Bulk message delete |
+
+### Edited messages
+Edited messages are shown only if the edited message has a Levenshtein distance above a threshold set in the config.
+If data is not present in the database, nothing will be logged.
+
+Data shown:
+- A ping to the person who created the message
+- The channel the message was sent in
+- The previous content of the message
+- The timestamp the message was sent at
+- A link to the message
+- The number of previous edits to the message
+
+
+### Deleted messages
+Deleted messages are also logged. Not all data might be avialble.
+
+Data shown:
+- A ping to the person who created the message (if available)
+- The channel the message was sent in
+- The previous content of the message (if available)
+- The timestamp the message was sent at
+- A link to the message (*showing the surrounding messages*)
+- The amount of time the message was visible for
+- The number of previous edits to the message
+
+Images are also logged. Images are **not** stored permamently, rather then CDN link is simply sent again, this link will expire, but will at least allow you to see what message was deleted temporarily.
+
+Only images are logged, not audio messages, not videos, not files.
+
+### Bulk message delete
+Bulk message deletes are handled differently, in order to reudce clutter messages are grouped into one, de-duplicated, and trimmed if too long.
+
+Data shown:
+- Number of messages deleted
+- Channel where the messages were sent in
+- A ping to the person who sent the message
+- List of trimmed messages.
+
 
 ---
 
@@ -99,27 +151,9 @@ When generating the invite URL / OAuth2 URL, the bot needs these permissions:
 
 ### 3. Configure the bot
 
-The bot reads a file called `config.toml`. Create it with:
+The bot reads a file called `config.toml`. 
 
-```toml
-# The ID of the channel where logs should be posted.
-# Right-click your log channel -> Copy Channel ID (Developer Mode must be on).
-target_channel = 123456789012345678
-
-# The bot token. You can also leave this empty and provide it via the
-# DISCORD_TOKEN environment variable instead.
-token = ""
-
-# Database connection string. Leave empty to use the DATABASE_URL environment
-# variable, or the built-in default for Docker (see below).
-database_url = ""
-```
-
-| Field          | Required? | Description |
-|----------------|-----------|-------------|
-| `target_channel` | Yes     | The channel ID for all log messages. |
-| `token`          | Yes*    | The bot token. *Can be omitted if `DISCORD_TOKEN` is set in the environment.* |
-| `database_url`   | Yes*    | Postgres connection string. *Can be omitted if `DATABASE_URL` is set, or the Docker default is used.* |
+An example `config.toml.example` file is present in this repo, alongside comments describing each entry.
 
 The bot needs a PostgreSQL database to remember invite usage and rejoin counts. The
 included `docker-compose.yml` spins one up automatically.

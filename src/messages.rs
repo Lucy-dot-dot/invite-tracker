@@ -249,9 +249,9 @@ pub fn build_edited_message(
     let message_link = format!("https://discord.com/channels/{guild}/{channel_id}/{message_id}");
 
     let embed_description = format!(
-        "**Message edited in** {formatted_channel}\n
-         {message_author}, old message**:**\n\n\
-         {content}\n\
+        "**Edited message in** {formatted_channel}\n\
+         {message_author} previous content**:**\n\n\
+         {content}\n\n\
          -# Posted <t:{created}:f>{edited_string}\n\
          -# [Jump to message]({message_link})"
     );
@@ -300,7 +300,7 @@ pub fn build_deleted_message(
     let embed_description = format!(
         "**Deleted message in** {formatted_channel}\n\
          {message_author}**:**\n\n\
-         {content}\n\
+         {content}\n\n\
          -# Posted <t:{created}:f> up for `{formatted_age}`{edited_string}\n\
          -# [Jump to surrounding]({message_link})"
     );

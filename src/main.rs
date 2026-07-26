@@ -12,7 +12,7 @@ use log4rs::encode::pattern::PatternEncoder;
 use serde::Deserialize;
 use serenity::Client;
 use serenity::all::{
-    Attachment, ChannelId, Context, Guild, GuildId, InviteCreateEvent, InviteDeleteEvent, Member,
+    ChannelId, Context, Guild, GuildId, InviteCreateEvent, InviteDeleteEvent, Member,
     Message, MessageId, MessageUpdateEvent, Ready, RichInvite, User, UserId,
 };
 use serenity::futures::StreamExt;
@@ -89,8 +89,8 @@ impl Handler {
         }
     }
 
-    fn format_attachments(&self, attachments: Vec<Attachment>) -> Option<String> {
-        let urls: Vec<&str> = attachments
+    fn format_attachments(&self, message: &Message) -> String {
+        let mut urls: Vec<String> = message.attachments
             .iter()
             .filter(|attachment| {
                 attachment
@@ -99,14 +99,20 @@ impl Handler {
                     .map(|ct| ct.starts_with("image/"))
                     .unwrap_or(false)
             })
-            .map(|attachment| attachment.proxy_url.as_str())
+            .map(|attachment| attachment.proxy_url.clone())
             .collect();
+        
+        urls.extend(message.embeds
+            .iter()
+            .filter_map(|embed| embed.url.as_ref().cloned())
+        );
 
-        if urls.is_empty() {
-            None
-        } else {
-            Some(urls.join("\n"))
-        }
+        urls.extend(message.sticker_items
+            .iter()
+            .filter_map(|sticker| sticker.image_url())
+        );
+
+        urls.join("\n")
     }
 
     async fn insert_members_batch(&self, batch: &[(i64, i64)]) {
@@ -387,7 +393,7 @@ impl EventHandler for Handler {
     }
 
     async fn message(&self, _ctx: Context, message: Message) {
-        let attachments_string = self.format_attachments(message.attachments);
+        let attachments_string = self.format_attachments(&message);
 
         if let Err(e) = sqlx::query(
             "INSERT INTO messages (id, user_id, message, attachments) \
@@ -436,29 +442,7 @@ impl EventHandler for Handler {
 
         let result = match result {
             Ok(Some(row)) => row,
-            Ok(None) => {
-                let attachments_string = event
-                    .attachments
-                    .map(|attachments| self.format_attachments(attachments))
-                    .flatten();
-                // If we have the author, store it as a new message
-                if let Some(author) = event.author {
-                    if let Err(e) = sqlx::query(
-                        "INSERT INTO messages (id, user_id, message, attachments, edits) \
-                    VALUES ($1, $2, $3, $4, 1)",
-                    )
-                    .bind(event.id.get() as i64)
-                    .bind(author.id.get() as i64)
-                    .bind(event.content)
-                    .bind(attachments_string)
-                    .execute(&self.pool)
-                    .await
-                    {
-                        log::error!("Failed to store message: {}", e);
-                    }
-                }
-                return;
-            }
+            Ok(None) => return,
             Err(e) => {
                 log::error!("Failed to update message edit: {}", e);
                 return;

@@ -249,7 +249,8 @@ pub fn build_edited_message(
     let message_link = format!("https://discord.com/channels/{guild}/{channel_id}/{message_id}");
 
     let embed_description = format!(
-        "{message_author} **edited in** {formatted_channel}**:**\n\
+        "**Edited message in** {formatted_channel}\n\
+         {message_author} previous content**:**\n\n\
          {content}\n\n\
          -# Posted <t:{created}:f>{edited_string}\n\
          -# [Jump to message]({message_link})"
@@ -257,7 +258,6 @@ pub fn build_edited_message(
 
     let embed = CreateEmbed::new()
         .author(embed_author)
-        .title("MESSAGE EDITED")
         .color(Colour::new(0xFFAA00))
         .description(embed_description);
 
@@ -298,7 +298,8 @@ pub fn build_deleted_message(
     let message_link = format!("https://discord.com/channels/{guild}/{channel_id}/{message_id}");
 
     let embed_description = format!(
-        "{message_author} **deleted in** {formatted_channel}**:**\n\
+        "**Deleted message in** {formatted_channel}\n\
+         {message_author}**:**\n\n\
          {content}\n\n\
          -# Posted <t:{created}:f> up for `{formatted_age}`{edited_string}\n\
          -# [Jump to surrounding]({message_link})"
@@ -306,7 +307,6 @@ pub fn build_deleted_message(
 
     let mut embed = CreateEmbed::new()
         .author(embed_author)
-        .title("MESSAGE DELETED")
         .color(Colour::new(0xFF0000))
         .description(embed_description);
 

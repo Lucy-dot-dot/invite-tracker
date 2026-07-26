@@ -89,7 +89,7 @@ impl Handler {
         }
     }
 
-    fn format_attachments(&self, message: &Message) -> String {
+    fn format_attachments(&self, message: &Message) -> Option<String> {
         let mut urls: Vec<String> = message.attachments
             .iter()
             .filter(|attachment| {
@@ -112,7 +112,10 @@ impl Handler {
             .filter_map(|sticker| sticker.image_url())
         );
 
-        urls.join("\n")
+        if urls.is_empty() {
+            return None;
+        }
+        Some(urls.join("\n"))
     }
 
     async fn insert_members_batch(&self, batch: &[(i64, i64)]) {
@@ -395,13 +398,15 @@ impl EventHandler for Handler {
     async fn message(&self, _ctx: Context, message: Message) {
         let attachments_string = self.format_attachments(&message);
 
+        let content = message.content;
+
         if let Err(e) = sqlx::query(
             "INSERT INTO messages (id, user_id, message, attachments) \
              VALUES ($1, $2, $3, $4)",
         )
         .bind(message.id.get() as i64)
         .bind(message.author.id.get() as i64)
-        .bind(message.content)
+        .bind(content)
         .bind(attachments_string)
         .execute(&self.pool)
         .await

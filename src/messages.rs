@@ -59,7 +59,7 @@ pub fn build_join_message(
     if account_age < NEW_ACCOUNT_THRESHOLD_SECS {
         let h = account_age / (60 * 60);
         let m = (account_age / 60) % 60;
-        suspicions.push(format!("## Account younger than 48h ({h}h {m}m)"));
+        suspicions.push(format!("Account younger than 48h ({h}h {m}m)"));
     }
     if let Some(until) = new_member.unusual_dm_activity_until {
         if until.unix_timestamp() > now {
@@ -70,7 +70,7 @@ pub fn build_join_message(
         }
     }
     if new_member.user.avatar.is_none() {
-        suspicions.push("## No avatar set".to_string());
+        suspicions.push("No avatar set".to_string());
     }
 
     if new_member.user.global_name.is_none() {

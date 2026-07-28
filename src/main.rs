@@ -1,3 +1,4 @@
+use discord_logging::config::Config;
 use discord_logging::db::purge_thread;
 use log::LevelFilter;
 use log4rs::append::console::ConsoleAppender;
@@ -9,7 +10,6 @@ use log4rs::append::rolling_file::{
 };
 use log4rs::config::{Appender, Config as LogConfig, Logger, Root};
 use log4rs::encode::pattern::PatternEncoder;
-use serde::Deserialize;
 use serenity::Client;
 use serenity::all::{
     ChannelId, Context, Guild, GuildId, InviteCreateEvent, InviteDeleteEvent, Member,
@@ -26,42 +26,7 @@ use time::OffsetDateTime;
 use discord_logging::datastructures::UsedInvite;
 use discord_logging::{db::initialize_database_pool, messages};
 
-#[derive(Deserialize, Clone, Debug)]
-struct Config {
-    #[serde(default)]
-    token: String,
-    join_leave_channel: ChannelId,
-    deleted_msg_channel: ChannelId,
-    edited_msg_distance: u32,
-    bulk_delete_min_length: usize,
-    bulk_delete_max_length: usize,
-    purge_interval_hours: u32,
-    purge_retention_days: u32,
-    #[serde(default)]
-    database_url: String,
-}
-
-impl Config {
-    fn resolve_token(&self) -> String {
-        let trimmed = self.token.trim();
-        if !trimmed.is_empty() {
-            return trimmed.to_string();
-        }
-        std::env::var("DISCORD_TOKEN")
-            .expect("No token in config.toml and the DISCORD_TOKEN env var is not set")
-    }
-
-    fn resolve_database_url(&self) -> String {
-        let trimmed = self.database_url.trim();
-        if !trimmed.is_empty() {
-            return trimmed.to_string();
-        }
-        std::env::var("DATABASE_URL")
-            .unwrap_or_else(|_| "postgres://discord:discord@127.0.0.1:5432/discord".to_string())
-    }
-}
-
-struct Handler {
+pub struct Handler {
     config: Arc<Config>,
     pool: PgPool,
 }
@@ -582,9 +547,12 @@ impl EventHandler for Handler {
             // Ignore DMs
             return;
         };
+
         if deleted_messages_ids.is_empty() {
             return;
         }
+
+        let count = deleted_messages_ids.len();
 
         let ids: Vec<i64> = deleted_messages_ids
             .iter()
@@ -612,13 +580,16 @@ impl EventHandler for Handler {
                 .entry(UserId::new(id as u64))
                 .or_insert_with(Vec::new);
 
-            if msg.len() < self.config.bulk_delete_min_length {
+            if count > 10 && msg.len() < self.config.bulk_delete_min_length {
                 continue;
             }
 
             let msg = msg.replace('\n', " ");
-            let msg = if msg.len() > self.config.bulk_delete_max_length {
-                format!("{}...", msg[..self.config.bulk_delete_max_length].trim())
+            let msg = if msg.chars().count()  > self.config.bulk_delete_max_length {
+                format!("{}...", msg.chars()
+                            .take(self.config.bulk_delete_max_length)
+                            .collect::<String>()
+                            .trim())
             } else {
                 msg
             };
@@ -638,7 +609,7 @@ impl EventHandler for Handler {
             messages_with_user,
             channel_id.to_channel(&ctx).await.ok(),
             channel_id,
-            deleted_messages_ids.len(),
+            count,
         );
         if let Err(e) = channel.send_message(&ctx, msg).await {
             log::error!(

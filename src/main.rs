@@ -398,12 +398,19 @@ impl EventHandler for Handler {
         }
 
         let result = sqlx::query(
-            "UPDATE messages SET \
-                message = COALESCE($2, message), \
-                edits = edits + 1 \
-            WHERE id = $1 \
+            "WITH old AS ( \
+                SELECT id, user_id, message \
+                FROM messages \
+                WHERE id = $1 \
+            ) \
+            UPDATE messages AS m \
+            SET \
+                message = COALESCE($2, m.message), \
+                edits = m.edits + 1 \
+            FROM old \
+            WHERE m.id = old.id \
             RETURNING \
-                user_id, OLD.message, edits",
+               m.user_id, OLD.message, m.edits"
         )
         .bind(event.id.get() as i64)
         .bind(&event.content)

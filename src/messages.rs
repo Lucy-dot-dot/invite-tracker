@@ -21,7 +21,7 @@ fn build_author_info(user: Option<User>, user_id: Option<UserId>) -> (String, Cr
             (msg, author)
         }
         (None, None) => {
-            let msg = "**Unknown message**".to_string();
+            let msg = "**Unknown message** ".to_string();
             let author = CreateEmbedAuthor::new("unknown");
             (msg, author)
         }
@@ -57,9 +57,7 @@ pub fn build_join_message(
     const NEW_ACCOUNT_THRESHOLD_SECS: i64 = 48 * 60 * 60;
     let mut suspicions: Vec<String> = Vec::new();
     if account_age < NEW_ACCOUNT_THRESHOLD_SECS {
-        let h = account_age / (60 * 60);
-        let m = (account_age / 60) % 60;
-        suspicions.push(format!("Account younger than 48h ({h}h {m}m)"));
+        suspicions.push(format!("Account younger than 48h ({})", format_time_diff(account_age as u64, 2)));
     }
     if let Some(until) = new_member.unusual_dm_activity_until {
         if until.unix_timestamp() > now {
@@ -242,7 +240,8 @@ pub fn build_edited_message(
     let formatted_channel = format_channel(channel, channel_id);
 
     let edited_string = match edits {
-        1.. => format!(" (edited {edits} times)"),
+        1 => "(edited once)".to_string(),
+        2.. => format!(" (edited {edits} times)"),
         _ => "".to_string(),
     };
 

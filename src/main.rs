@@ -410,7 +410,7 @@ impl EventHandler for Handler {
             FROM old \
             WHERE m.id = old.id \
             RETURNING \
-               m.user_id, OLD.message, m.edits"
+               m.user_id, OLD.message, OLD.edits"
         )
         .bind(event.id.get() as i64)
         .bind(&event.content)

@@ -1,4 +1,4 @@
-use discord_logging::audit_log::get_message_deleted_entry;
+use discord_logging::audit_log::{get_ban_or_kick_event, get_message_deleted_entry};
 use discord_logging::config::Config;
 use discord_logging::db::purge_thread;
 use log::LevelFilter;
@@ -294,7 +294,7 @@ impl EventHandler for Handler {
     async fn guild_member_removal(
         &self,
         ctx: Context,
-        _guild_id: GuildId,
+        guild_id: GuildId,
         user: User,
         _member: Option<Member>,
     ) {
@@ -307,8 +307,17 @@ impl EventHandler for Handler {
                 .await
                 .unwrap_or(None);
 
+        let entry = get_ban_or_kick_event(guild_id, user.id, &ctx, &self.pool).await;
+
+        let admin = if let Some(entry) = &entry {
+            entry.user_id.to_user(&ctx).await.ok()
+        } else { 
+            None
+        };
+
+
         let channel = self.config.join_leave_channel;
-        let msg = messages::build_leave_message(&user, last_join);
+        let msg = messages::build_leave_message(&user, last_join, admin, entry);
         if let Err(e) = channel.send_message(&ctx, msg).await {
             log::error!("Unable to send leave message to channel {}: {}", channel, e);
         }
@@ -521,7 +530,7 @@ impl EventHandler for Handler {
             (None, None)
         };
 
-        let entry = get_message_deleted_entry(guild_id, &ctx, channel_id, user_id, Some(5), &self.pool).await; 
+        let entry = get_message_deleted_entry(guild_id, channel_id, user_id, &ctx, &self.pool).await; 
 
         let (deleter_id, deleter_user) = if let Some(entry) = entry {
             let deleter_id = entry.user_id;

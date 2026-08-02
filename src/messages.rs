@@ -1,6 +1,6 @@
+use serenity::all::audit_log::Action;
 use serenity::all::{
-    Channel, ChannelId, Colour, CreateEmbed, CreateEmbedAuthor, CreateMessage, GuildId,
-    InviteCreateEvent, Member, MessageId, User, UserId,
+    AuditLogEntry, Channel, ChannelId, Colour, CreateEmbed, CreateEmbedAuthor, CreateMessage, GuildId, InviteCreateEvent, Member, MemberAction, MessageId, User, UserId,
 };
 use time::OffsetDateTime;
 
@@ -152,9 +152,37 @@ pub fn build_join_message(
     CreateMessage::new().embed(embed)
 }
 
-pub fn build_leave_message(user: &User, last_join: Option<i64>) -> CreateMessage {
+pub fn build_leave_message(user: &User, last_join: Option<i64>, admin: Option<User>, entry: Option<AuditLogEntry>) -> CreateMessage {
     let user_id = user.id.get();
     let username = &user.name;
+
+    let (title, event_string) = if let Some(entry) = entry {
+        let event_type = match entry.action {
+            Action::Member(MemberAction::BanAdd) => "Banned",
+            Action::Member(MemberAction::Kick) => "Kicked",
+            _ => "Kicked"
+        };
+
+        let reason = if let Some(reason) = &entry.reason && !reason.is_empty() {
+            reason.trim()
+        } else {
+            "*No reason stated*"
+        };
+
+        let admin_string = format_user(admin, entry.user_id);
+
+        let event_string = format!(
+            "\n\n**{event_type} by ** {admin_string}\n\
+             **Reason:** {reason}"
+        );
+
+        let title = format!("MEMBER {}", event_type.to_uppercase());
+
+        (title, event_string)
+    } else {
+        ("MEMBER LEFT".to_string(), "".to_string())
+    };
+
 
     let membership = match last_join {
         Some(ts) => {
@@ -169,7 +197,8 @@ pub fn build_leave_message(user: &User, last_join: Option<i64>) -> CreateMessage
     };
 
     let embed_description = format!(
-        "<@{user_id}> ({username})\n\n\
+        "<@{user_id}> ({username})\
+        {event_string}\n\n\
          {membership}",
     );
 
@@ -178,7 +207,7 @@ pub fn build_leave_message(user: &User, last_join: Option<i64>) -> CreateMessage
 
     let embed = CreateEmbed::new()
         .author(embed_author)
-        .title("MEMBER LEFT")
+        .title(title)
         .color(Colour::new(0xFF0000))
         .description(embed_description)
         .thumbnail(&avatar_url);

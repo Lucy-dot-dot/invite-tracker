@@ -307,7 +307,7 @@ pub fn build_deleted_message(
         _ => format!(" (edited {edits} times)"),
     };
 
-    let deleted_info = if let Some(deleter_id) = deleter_id {
+    let deleter_info = if let Some(deleter_id) = deleter_id {
         format!("\n**Deleted by** {}", format_user(deleter, deleter_id))
     } else {
         "".to_string()
@@ -316,8 +316,9 @@ pub fn build_deleted_message(
     let message_link = format!("https://discord.com/channels/{guild}/{channel_id}/{message_id}");
 
     let embed_description = format!(
-        "**Deleted message in** {formatted_channel}\n\
-         {message_author}{deleted_info} **:**\n\n\
+        "**Deleted message in** {formatted_channel}\
+         {deleter_info}\n\
+         {message_author} **:**\n\n\
          {content}\n\n\
          -# Posted <t:{created}:f> up for `{formatted_age}`{edited_string}\n\
          -# [Jump to surrounding]({message_link})"

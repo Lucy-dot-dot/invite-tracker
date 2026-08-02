@@ -512,16 +512,9 @@ impl EventHandler for Handler {
             })
             .unwrap_or((0, None, None, 0));
 
-        let (user_id, user) = if user_id != 0 {
+        let (mut user_id, mut user) = if user_id != 0 {
             let user_id = UserId::new(user_id as u64);
             let user = user_id.to_user(&ctx).await.ok();
-
-            // Ignore bots
-            if let Some(user) = &user
-                && user.bot
-            {
-                return;
-            }
 
             (Some(user_id), user)
         } else {
@@ -532,11 +525,27 @@ impl EventHandler for Handler {
 
         let (deleter_id, deleter_user) = if let Some(entry) = entry {
             let deleter_id = entry.user_id;
-            let user = deleter_id.to_user(&ctx).await.ok();
-            (Some(deleter_id), user)
+            let deleter_user = deleter_id.to_user(&ctx).await.ok();
+
+            // If the message was not cached and we don't have the user_id, get it from the audit log instead
+            if user_id.is_none() && let Some(audit_user_id) = entry.target_id {
+                let audit_user_id = UserId::new(audit_user_id.get());
+                user_id = Some(audit_user_id);
+                user = audit_user_id.to_user(&ctx).await.ok();
+            }
+
+            (Some(deleter_id), deleter_user)
         } else {
+            // Ignore bots only if the message is deleted by the bot itself
+            if let Some(user) = &user
+                && user.bot
+            {
+                return;
+            }
+
             (None, None)
         };
+        
 
         let channel = self.config.deleted_msg_channel;
         let msg = messages::build_deleted_message(

@@ -114,6 +114,12 @@ pub async fn get_ban_or_kick_event(
             continue;
         }
 
+        match &entry.action {
+            Action::Member(MemberAction::BanAdd) | 
+            Action::Member(MemberAction::Kick) => (),
+            _ => continue,
+        }
+
         let result = sqlx::query(
             "SELECT update_audit_count($1, 0)"
         )
@@ -134,13 +140,7 @@ pub async fn get_ban_or_kick_event(
             continue;
         }
 
-        match &entry.action {
-            Action::Member(MemberAction::BanAdd) | 
-            Action::Member(MemberAction::Kick) => return Some(entry),
-            _ => continue,
-        }
-
+        return Some(entry)
     }
-
     return None;
 }

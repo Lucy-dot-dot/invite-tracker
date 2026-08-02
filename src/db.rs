@@ -43,19 +43,24 @@ fn timestamp_to_snowflake(unix_seconds: i64) -> i64 {
 }
 
 pub async fn purge_thread(pool: PgPool, max_age_seconds: u32, seconds_interval: u32) {
+    let interval = Duration::from_secs(seconds_interval as u64);
     loop {
         let now = OffsetDateTime::now_utc().unix_timestamp();
         let snowflake_threshold = timestamp_to_snowflake(now - max_age_seconds as i64);
 
         // Just in case discord snowflakes overflow (in 140 years) this will just stop purging instead of deleting everything
-        if let Err(e) = sqlx::query("DELETE FROM messages WHERE id < $1 AND id > 0")
-            .bind(snowflake_threshold as i64)
-            .execute(&pool)
-            .await
+        if let Err(e) = sqlx::query(
+            "DELETE FROM messages WHERE id < $1 AND id > 0;\
+                 DELETE FROM audit_log_entries WHERE id < $1 AND id > 0;",
+        )
+        .bind(snowflake_threshold as i64)
+        .execute(&pool)
+        .await
         {
             log::error!("Failed to purge data from db: {}", e);
         }
-        sleep(Duration::from_secs(seconds_interval as u64)).await;
+
+        sleep(interval).await;
     }
 }
 

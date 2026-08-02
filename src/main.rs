@@ -1,3 +1,4 @@
+use discord_logging::audit_log::get_message_deleted_entry;
 use discord_logging::config::Config;
 use discord_logging::db::purge_thread;
 use log::LevelFilter;
@@ -12,8 +13,8 @@ use log4rs::config::{Appender, Config as LogConfig, Logger, Root};
 use log4rs::encode::pattern::PatternEncoder;
 use serenity::Client;
 use serenity::all::{
-    ChannelId, Context, Guild, GuildId, InviteCreateEvent, InviteDeleteEvent, Member,
-    Message, MessageId, MessageUpdateEvent, Ready, RichInvite, User, UserId,
+    ChannelId, Context, Guild, GuildId, InviteCreateEvent, InviteDeleteEvent, Member, Message,
+    MessageId, MessageUpdateEvent, Ready, RichInvite, User, UserId,
 };
 use serenity::futures::StreamExt;
 use serenity::prelude::{EventHandler, GatewayIntents};
@@ -55,7 +56,8 @@ impl Handler {
     }
 
     fn format_attachments(&self, message: &Message) -> Option<String> {
-        let mut urls: Vec<String> = message.attachments
+        let mut urls: Vec<String> = message
+            .attachments
             .iter()
             .filter(|attachment| {
                 attachment
@@ -66,15 +68,19 @@ impl Handler {
             })
             .map(|attachment| attachment.proxy_url.clone())
             .collect();
-        
-        urls.extend(message.embeds
-            .iter()
-            .filter_map(|embed| embed.url.as_ref().cloned())
+
+        urls.extend(
+            message
+                .embeds
+                .iter()
+                .filter_map(|embed| embed.url.as_ref().cloned()),
         );
 
-        urls.extend(message.sticker_items
-            .iter()
-            .filter_map(|sticker| sticker.image_url())
+        urls.extend(
+            message
+                .sticker_items
+                .iter()
+                .filter_map(|sticker| sticker.image_url()),
         );
 
         if urls.is_empty() {
@@ -410,7 +416,7 @@ impl EventHandler for Handler {
             FROM old \
             WHERE m.id = old.id \
             RETURNING \
-               m.user_id, OLD.message, OLD.edits"
+               m.user_id, OLD.message, OLD.edits",
         )
         .bind(event.id.get() as i64)
         .bind(&event.content)
@@ -522,10 +528,22 @@ impl EventHandler for Handler {
             (None, None)
         };
 
+        let entry = get_message_deleted_entry(guild_id, &ctx, channel_id, user_id, Some(5), &self.pool).await; 
+
+        let (deleter_id, deleter_user) = if let Some(entry) = entry {
+            let deleter_id = entry.user_id;
+            let user = deleter_id.to_user(&ctx).await.ok();
+            (Some(deleter_id), user)
+        } else {
+            (None, None)
+        };
+
         let channel = self.config.deleted_msg_channel;
         let msg = messages::build_deleted_message(
             user,
             user_id,
+            deleter_user,
+            deleter_id,
             channel_id.to_channel(&ctx).await.ok(),
             channel_id,
             guild_id,
@@ -592,11 +610,14 @@ impl EventHandler for Handler {
             }
 
             let msg = msg.replace('\n', " ");
-            let msg = if msg.chars().count()  > self.config.bulk_delete_max_length {
-                format!("{}...", msg.chars()
-                            .take(self.config.bulk_delete_max_length)
-                            .collect::<String>()
-                            .trim())
+            let msg = if msg.chars().count() > self.config.bulk_delete_max_length {
+                format!(
+                    "{}...",
+                    msg.chars()
+                        .take(self.config.bulk_delete_max_length)
+                        .collect::<String>()
+                        .trim()
+                )
             } else {
                 msg
             };

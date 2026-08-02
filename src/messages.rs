@@ -10,7 +10,7 @@ use super::format_time::format_time_diff;
 fn build_author_info(user: Option<User>, user_id: Option<UserId>) -> (String, CreateEmbedAuthor) {
     match (user, user_id) {
         (Some(user), _) => {
-            let msg = format!("**Message by** <@{}>({})", user.id.get(), user.name);
+            let msg = format!("**Message by** <@{}>({})", user.id, user.name);
             let avatar_url = user.avatar_url().unwrap_or_else(|| user.face());
             let author = CreateEmbedAuthor::new(user.name).icon_url(avatar_url);
             (msg, author)
@@ -27,6 +27,15 @@ fn build_author_info(user: Option<User>, user_id: Option<UserId>) -> (String, Cr
         }
     }
 }
+
+fn format_user(user: Option<User>, user_id: UserId) -> String {
+    match user {
+        Some(user) => format!("<@{user_id}>({})", user.name),
+        None => format!("<@{user_id}>"),
+    }
+}
+
+
 fn format_channel(channel: Option<Channel>, channel_id: ChannelId) -> String {
     match channel {
         Some(Channel::Guild(gc)) => format!("<#{channel_id}>({})", gc.name),
@@ -34,8 +43,7 @@ fn format_channel(channel: Option<Channel>, channel_id: ChannelId) -> String {
             let recipient = pc.recipient;
             format!("DM with <@{}>({})", recipient.id.get(), recipient.name)
         }
-        Some(_) => "unknown channel".to_string(),
-        None => format!("<#{channel_id}>"),
+        _ => format!("<#{channel_id}>"),
     }
 }
 
@@ -57,7 +65,10 @@ pub fn build_join_message(
     const NEW_ACCOUNT_THRESHOLD_SECS: i64 = 48 * 60 * 60;
     let mut suspicions: Vec<String> = Vec::new();
     if account_age < NEW_ACCOUNT_THRESHOLD_SECS {
-        suspicions.push(format!("Account younger than 48h ({})", format_time_diff(account_age as u64, 2)));
+        suspicions.push(format!(
+            "Account younger than 48h ({})",
+            format_time_diff(account_age as u64, 2)
+        ));
     }
     if let Some(until) = new_member.unusual_dm_activity_until {
         if until.unix_timestamp() > now {
@@ -266,6 +277,8 @@ pub fn build_edited_message(
 pub fn build_deleted_message(
     user: Option<User>,
     user_id: Option<UserId>,
+    deleter: Option<User>,
+    deleter_id: Option<UserId>,
     channel: Option<Channel>,
     channel_id: ChannelId,
     guild: GuildId,
@@ -294,11 +307,17 @@ pub fn build_deleted_message(
         _ => format!(" (edited {edits} times)"),
     };
 
+    let deleted_info = if let Some(deleter_id) = deleter_id {
+        format!("\n**Deleted by** {}", format_user(deleter, deleter_id))
+    } else {
+        "".to_string()
+    };
+
     let message_link = format!("https://discord.com/channels/{guild}/{channel_id}/{message_id}");
 
     let embed_description = format!(
         "**Deleted message in** {formatted_channel}\n\
-         {message_author}**:**\n\n\
+         {message_author}{deleted_info} **:**\n\n\
          {content}\n\n\
          -# Posted <t:{created}:f> up for `{formatted_age}`{edited_string}\n\
          -# [Jump to surrounding]({message_link})"

@@ -3,6 +3,7 @@ use discord_logging::audit_log::{
 };
 use discord_logging::config::Config;
 use discord_logging::db::purge_thread;
+use discord_logging::messages::send_message;
 use log::LevelFilter;
 use log4rs::append::console::ConsoleAppender;
 use log4rs::append::rolling_file::{
@@ -282,16 +283,13 @@ impl EventHandler for Handler {
 
         let used_invite = self.sync_invites_find_used(&ctx, new_member.guild_id).await;
 
-        let channel = self.config.join_leave_channel;
         let msg = messages::build_join_message(
             &new_member,
             join_amount,
             prev_last_join,
             used_invite.as_ref(),
         );
-        if let Err(e) = channel.send_message(&ctx, msg).await {
-            log::error!("Unable to send join message to channel {}: {}", channel, e);
-        }
+        send_message(msg, &ctx, self.config.join_leave_channel).await;
     }
 
     async fn guild_member_removal(
@@ -318,11 +316,8 @@ impl EventHandler for Handler {
             None
         };
 
-        let channel = self.config.join_leave_channel;
         let msg = messages::build_leave_message(&user, last_join, admin, entry);
-        if let Err(e) = channel.send_message(&ctx, msg).await {
-            log::error!("Unable to send leave message to channel {}: {}", channel, e);
-        }
+        send_message(msg, &ctx, self.config.join_leave_channel).await;
     }
 
     async fn invite_create(&self, ctx: Context, data: InviteCreateEvent) {
@@ -359,15 +354,8 @@ impl EventHandler for Handler {
             log::error!("Failed to insert invite {}: {}", data.code, e);
         }
 
-        let channel = self.config.join_leave_channel;
         let msg = messages::build_invite_message(&data);
-        if let Err(e) = channel.send_message(&ctx, msg).await {
-            log::error!(
-                "Unable to send invite message to channel {}: {}",
-                channel,
-                e
-            );
-        }
+        send_message(msg, &ctx, self.config.join_leave_channel).await;
     }
 
     async fn invite_delete(&self, _ctx: Context, data: InviteDeleteEvent) {
@@ -464,7 +452,6 @@ impl EventHandler for Handler {
                 return;
             }
 
-            let channel = self.config.deleted_msg_channel;
             let msg = messages::build_edited_message(
                 event.author,
                 Some(UserId::new(user_id as u64)),
@@ -476,13 +463,7 @@ impl EventHandler for Handler {
                 edits,
             );
 
-            if let Err(e) = channel.send_message(&ctx, msg).await {
-                log::error!(
-                    "Unable to send edited message to channel {}: {}",
-                    channel,
-                    e
-                );
-            }
+            send_message(msg, &ctx, self.config.deleted_msg_channel).await;
         }
     }
 
@@ -560,7 +541,6 @@ impl EventHandler for Handler {
             (None, None)
         };
 
-        let channel = self.config.deleted_msg_channel;
         let msg = messages::build_deleted_message(
             user,
             user_id,
@@ -574,13 +554,8 @@ impl EventHandler for Handler {
             attachments,
             edits,
         );
-        if let Err(e) = channel.send_message(&ctx, msg).await {
-            log::error!(
-                "Unable to send deleted message to channel {}: {}",
-                channel,
-                e
-            );
-        }
+
+        send_message(msg, &ctx, self.config.deleted_msg_channel).await;
     }
 
     async fn message_delete_bulk(
@@ -654,20 +629,14 @@ impl EventHandler for Handler {
             messages_with_user.push((user_id, user, messages));
         }
 
-        let channel = self.config.deleted_msg_channel;
         let msg = messages::build_bulk_delete_message(
             messages_with_user,
             channel_id.to_channel(&ctx).await.ok(),
             channel_id,
             count,
         );
-        if let Err(e) = channel.send_message(&ctx, msg).await {
-            log::error!(
-                "Unable to send deleted message to channel {}: {}",
-                channel,
-                e
-            );
-        }
+
+        send_message(msg, &ctx, self.config.deleted_msg_channel).await;
     }
 
     async fn ready(&self, _ctx: Context, _ready: Ready) {

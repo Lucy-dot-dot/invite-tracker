@@ -1,12 +1,29 @@
 use serenity::all::audit_log::Action;
 use serenity::all::{
-    AuditLogEntry, Channel, ChannelId, Colour, CreateEmbed, CreateEmbedAuthor, CreateMessage,
-    GuildId, InviteCreateEvent, Member, MemberAction, MessageId, User, UserId,
+    AuditLogEntry, Channel, ChannelId, Colour, Context, CreateEmbed, CreateEmbedAuthor,
+    CreateMessage, GuildId, InviteCreateEvent, Member, MemberAction, MessageId, User, UserId,
 };
 use time::OffsetDateTime;
+use tokio::time::{Duration, sleep};
 
 use super::datastructures::UsedInvite;
 use super::format_time::format_time_diff;
+
+const MSG_RETRY_INTERVAL: Duration = Duration::from_millis(200);
+
+pub async fn send_message(message: CreateMessage, ctx: &Context, channel_id: ChannelId) {
+    if let Err(_) = channel_id.send_message(ctx, message.clone()).await {
+        sleep(MSG_RETRY_INTERVAL).await;
+
+        if let Err(e) = channel_id.send_message(ctx, message).await {
+            log::error!(
+                "Unable to send message to channel {} after retry: {}",
+                channel_id,
+                e
+            );
+        }
+    }
+}
 
 fn build_author_info(user: Option<User>, user_id: Option<UserId>) -> (String, CreateEmbedAuthor) {
     match (user, user_id) {

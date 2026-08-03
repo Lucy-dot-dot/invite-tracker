@@ -1,14 +1,15 @@
 use serenity::all::{
-    AuditLogEntry, ChannelId, GuildId, Http, MemberAction, MessageAction, UserId, audit_log::Action,
+    AuditLogEntry, ChannelId, Context, GuildId, MemberAction, MessageAction, UserId,
+    audit_log::Action,
 };
 use sqlx::{PgPool, Row};
 
 // Max number of logs to look through
 const NUMBER_OF_LOG_LIMIT: u8 = 10;
 
-pub async fn init_audit_log(guild_id: GuildId, http: impl AsRef<Http>, pool: &PgPool) {
+pub async fn init_audit_log(guild_id: GuildId, ctx: &Context, pool: &PgPool) {
     let logs = guild_id
-        .audit_logs(http, None, None, None, Some(NUMBER_OF_LOG_LIMIT))
+        .audit_logs(&ctx, None, None, None, Some(NUMBER_OF_LOG_LIMIT))
         .await;
 
     let logs = match logs {
@@ -48,12 +49,12 @@ pub async fn get_message_deleted_entry(
     guild_id: GuildId,
     channel_id: ChannelId,
     user_id: Option<UserId>,
-    http: impl AsRef<Http>,
+    ctx: &Context,
     pool: &PgPool,
 ) -> Option<AuditLogEntry> {
     let logs = guild_id
         .audit_logs(
-            http,
+            &ctx,
             Some(Action::Message(MessageAction::Delete)),
             None,
             None,
@@ -120,11 +121,11 @@ pub async fn get_message_deleted_entry(
 pub async fn get_ban_or_kick_event(
     guild_id: GuildId,
     user_id: UserId,
-    http: impl AsRef<Http>,
+    ctx: &Context,
     pool: &PgPool,
 ) -> Option<AuditLogEntry> {
     let logs = guild_id
-        .audit_logs(http, None, None, None, Some(NUMBER_OF_LOG_LIMIT))
+        .audit_logs(ctx, None, None, None, Some(NUMBER_OF_LOG_LIMIT))
         .await;
 
     let logs = match logs {

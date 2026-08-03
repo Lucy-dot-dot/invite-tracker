@@ -1,4 +1,6 @@
-use discord_logging::audit_log::{get_ban_or_kick_event, get_message_deleted_entry, init_audit_log};
+use discord_logging::audit_log::{
+    get_ban_or_kick_event, get_message_deleted_entry, init_audit_log,
+};
 use discord_logging::config::Config;
 use discord_logging::db::purge_thread;
 use log::LevelFilter;
@@ -198,8 +200,7 @@ impl Handler {
 
 #[serenity::async_trait]
 impl EventHandler for Handler {
-    async fn guild_create(&self, ctx: Context, guild: Guild, is_new: Option<bool>) {
-
+    async fn guild_create(&self, ctx: Context, guild: Guild, _is_new: Option<bool>) {
         // initialize members
         let mut members_iter = guild.id.members_iter(&ctx).boxed();
 
@@ -230,7 +231,7 @@ impl EventHandler for Handler {
             self.insert_members_batch(&batch).await;
         }
 
-        // innitialize invites
+        // initialize invites
         match guild.invites(&ctx).await {
             Ok(existing) => {
                 for invite in existing.iter() {
@@ -242,7 +243,6 @@ impl EventHandler for Handler {
 
         // initialize audit logs
         init_audit_log(guild.id, &ctx, &self.pool).await;
-
     }
 
     async fn guild_member_addition(&self, ctx: Context, new_member: Member) {
@@ -314,10 +314,9 @@ impl EventHandler for Handler {
 
         let admin = if let Some(entry) = &entry {
             entry.user_id.to_user(&ctx).await.ok()
-        } else { 
+        } else {
             None
         };
-
 
         let channel = self.config.join_leave_channel;
         let msg = messages::build_leave_message(&user, last_join, admin, entry);
@@ -533,14 +532,17 @@ impl EventHandler for Handler {
             (None, None)
         };
 
-        let entry = get_message_deleted_entry(guild_id, channel_id, user_id, &ctx, &self.pool).await; 
+        let entry =
+            get_message_deleted_entry(guild_id, channel_id, user_id, &ctx, &self.pool).await;
 
         let (deleter_id, deleter_user) = if let Some(entry) = entry {
             let deleter_id = entry.user_id;
             let deleter_user = deleter_id.to_user(&ctx).await.ok();
 
             // If the message was not cached and we don't have the user_id, get it from the audit log instead
-            if user_id.is_none() && let Some(audit_user_id) = entry.target_id {
+            if user_id.is_none()
+                && let Some(audit_user_id) = entry.target_id
+            {
                 let audit_user_id = UserId::new(audit_user_id.get());
                 user_id = Some(audit_user_id);
                 user = audit_user_id.to_user(&ctx).await.ok();
@@ -557,7 +559,6 @@ impl EventHandler for Handler {
 
             (None, None)
         };
-        
 
         let channel = self.config.deleted_msg_channel;
         let msg = messages::build_deleted_message(

@@ -3,19 +3,12 @@ use serenity::all::{
 };
 use sqlx::{PgPool, Row};
 
-// Max number of logs to look through 
+// Max number of logs to look through
 const NUMBER_OF_LOG_LIMIT: u8 = 10;
 
-pub async fn init_audit_log(guild_id: GuildId, http: impl AsRef<Http>, pool: &PgPool,){
-
+pub async fn init_audit_log(guild_id: GuildId, http: impl AsRef<Http>, pool: &PgPool) {
     let logs = guild_id
-        .audit_logs(
-            http,
-            None,
-            None,
-            None,
-            Some(NUMBER_OF_LOG_LIMIT),
-        )
+        .audit_logs(http, None, None, None, Some(NUMBER_OF_LOG_LIMIT))
         .await;
 
     let logs = match logs {
@@ -27,7 +20,7 @@ pub async fn init_audit_log(guild_id: GuildId, http: impl AsRef<Http>, pool: &Pg
     };
 
     for entry in logs.entries {
-    let count = if let Some(options) = &entry.options
+        let count = if let Some(options) = &entry.options
             && let Some(count) = options.count
         {
             count as i32
@@ -35,13 +28,11 @@ pub async fn init_audit_log(guild_id: GuildId, http: impl AsRef<Http>, pool: &Pg
             1
         };
 
-        let result = sqlx::query(
-            "SELECT update_audit_count($1, $2)"
-        )
-        .bind(entry.id.get() as i64)
-        .bind(count)
-        .fetch_one(pool)
-        .await;
+        let result = sqlx::query("SELECT update_audit_count($1, $2)")
+            .bind(entry.id.get() as i64)
+            .bind(count)
+            .fetch_one(pool)
+            .await;
 
         match result {
             Ok(row) => row.get::<Option<i32>, _>(0),
@@ -51,7 +42,6 @@ pub async fn init_audit_log(guild_id: GuildId, http: impl AsRef<Http>, pool: &Pg
             }
         };
     }
-
 }
 
 pub async fn get_message_deleted_entry(
@@ -102,13 +92,11 @@ pub async fn get_message_deleted_entry(
             1
         };
 
-        let result = sqlx::query(
-            "SELECT update_audit_count($1, $2)"
-        )
-        .bind(entry.id.get() as i64)
-        .bind(count)
-        .fetch_one(pool)
-        .await;
+        let result = sqlx::query("SELECT update_audit_count($1, $2)")
+            .bind(entry.id.get() as i64)
+            .bind(count)
+            .fetch_one(pool)
+            .await;
 
         let old_count = match result {
             Ok(row) => row.get::<Option<i32>, _>(0),
@@ -123,13 +111,11 @@ pub async fn get_message_deleted_entry(
             continue;
         }
 
-
         return Some(entry);
     }
 
     return None;
 }
-
 
 pub async fn get_ban_or_kick_event(
     guild_id: GuildId,
@@ -137,16 +123,9 @@ pub async fn get_ban_or_kick_event(
     http: impl AsRef<Http>,
     pool: &PgPool,
 ) -> Option<AuditLogEntry> {
-
     let logs = guild_id
-    .audit_logs(
-        http,
-        None,
-        None,
-        None,
-        Some(NUMBER_OF_LOG_LIMIT),
-    )
-    .await;
+        .audit_logs(http, None, None, None, Some(NUMBER_OF_LOG_LIMIT))
+        .await;
 
     let logs = match logs {
         Ok(logs) => logs,
@@ -166,17 +145,14 @@ pub async fn get_ban_or_kick_event(
 
         // skip entries that are not a bank or kick event
         match &entry.action {
-            Action::Member(MemberAction::BanAdd) | 
-            Action::Member(MemberAction::Kick) => (),
+            Action::Member(MemberAction::BanAdd) | Action::Member(MemberAction::Kick) => (),
             _ => continue,
         }
 
-        let result = sqlx::query(
-            "SELECT update_audit_count($1, 0)"
-        )
-        .bind(entry.id.get() as i64)
-        .fetch_one(pool)
-        .await;
+        let result = sqlx::query("SELECT update_audit_count($1, 0)")
+            .bind(entry.id.get() as i64)
+            .fetch_one(pool)
+            .await;
 
         let old_count = match result {
             Ok(row) => row.get::<Option<i32>, _>(0),
@@ -191,7 +167,7 @@ pub async fn get_ban_or_kick_event(
             continue;
         }
 
-        return Some(entry)
+        return Some(entry);
     }
     return None;
 }

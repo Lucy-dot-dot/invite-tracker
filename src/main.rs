@@ -1,4 +1,4 @@
-use discord_logging::audit_log::{get_ban_or_kick_event, get_message_deleted_entry};
+use discord_logging::audit_log::{get_ban_or_kick_event, get_message_deleted_entry, init_audit_log};
 use discord_logging::config::Config;
 use discord_logging::db::purge_thread;
 use log::LevelFilter;
@@ -199,6 +199,8 @@ impl Handler {
 #[serenity::async_trait]
 impl EventHandler for Handler {
     async fn guild_create(&self, ctx: Context, guild: Guild, is_new: Option<bool>) {
+
+        // initialize members
         let mut members_iter = guild.id.members_iter(&ctx).boxed();
 
         const BATCH_SIZE: usize = 256;
@@ -228,18 +230,19 @@ impl EventHandler for Handler {
             self.insert_members_batch(&batch).await;
         }
 
-        if is_new.unwrap_or(false) {
-            log::debug!("Guild {} is connected", guild.name);
-            match guild.invites(&ctx).await {
-                Ok(existing) => {
-                    for invite in existing.iter() {
-                        self.upsert_invite(guild.id.get() as i64, invite).await;
-                    }
-                    log::debug!("Guild is now ready to go");
+        // innitialize invites
+        match guild.invites(&ctx).await {
+            Ok(existing) => {
+                for invite in existing.iter() {
+                    self.upsert_invite(guild.id.get() as i64, invite).await;
                 }
-                Err(e) => log::error!("Failed to fetch invites for guild {}: {}", guild.id, e),
             }
+            Err(e) => log::error!("Failed to fetch invites for guild {}: {}", guild.id, e),
         }
+
+        // initialize audit logs
+        init_audit_log(guild.id, &ctx, &self.pool).await;
+
     }
 
     async fn guild_member_addition(&self, ctx: Context, new_member: Member) {

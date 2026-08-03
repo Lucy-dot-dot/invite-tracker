@@ -6,6 +6,54 @@ use sqlx::{PgPool, Row};
 // Max number of logs to look through 
 const NUMBER_OF_LOG_LIMIT: u8 = 10;
 
+pub async fn init_audit_log(guild_id: GuildId, http: impl AsRef<Http>, pool: &PgPool,){
+
+    let logs = guild_id
+        .audit_logs(
+            http,
+            None,
+            None,
+            None,
+            Some(NUMBER_OF_LOG_LIMIT),
+        )
+        .await;
+
+    let logs = match logs {
+        Ok(logs) => logs,
+        Err(e) => {
+            log::error!("Failed to fetch audit logs for init: {}", e);
+            return;
+        }
+    };
+
+    for entry in logs.entries {
+    let count = if let Some(options) = &entry.options
+            && let Some(count) = options.count
+        {
+            count as i32
+        } else {
+            1
+        };
+
+        let result = sqlx::query(
+            "SELECT update_audit_count($1, $2)"
+        )
+        .bind(entry.id.get() as i64)
+        .bind(count)
+        .fetch_one(pool)
+        .await;
+
+        match result {
+            Ok(row) => row.get::<Option<i32>, _>(0),
+            Err(e) => {
+                log::error!("Failed to upsert audit log: {}", e);
+                continue;
+            }
+        };
+    }
+
+}
+
 pub async fn get_message_deleted_entry(
     guild_id: GuildId,
     channel_id: ChannelId,
@@ -32,12 +80,26 @@ pub async fn get_message_deleted_entry(
     };
 
     for entry in logs.entries {
+        if let Some(options) = &entry.options
+            && let Some(msg_channel_id) = options.channel_id
+            && msg_channel_id != channel_id
+        {
+            continue;
+        }
+
+        if let Some(expected_user) = user_id
+            && let Some(target_id) = &entry.target_id
+            && target_id.get() != expected_user.get()
+        {
+            continue;
+        }
+
         let count = if let Some(options) = &entry.options
             && let Some(count) = options.count
         {
             count as i32
         } else {
-            0
+            1
         };
 
         let result = sqlx::query(
@@ -61,19 +123,6 @@ pub async fn get_message_deleted_entry(
             continue;
         }
 
-        if let Some(options) = &entry.options
-            && let Some(msg_channel_id) = options.channel_id
-            && msg_channel_id != channel_id
-        {
-            continue;
-        }
-
-        if let Some(expected_user) = user_id
-            && let Some(target_id) = &entry.target_id
-            && target_id.get() != expected_user.get()
-        {
-            continue;
-        }
 
         return Some(entry);
     }
@@ -108,12 +157,14 @@ pub async fn get_ban_or_kick_event(
     };
 
     for entry in logs.entries {
+        // skip entries for other targets
         if let Some(target_id) = &entry.target_id
             && target_id.get() != user_id.get()
         {
             continue;
         }
 
+        // skip entries that are not a bank or kick event
         match &entry.action {
             Action::Member(MemberAction::BanAdd) | 
             Action::Member(MemberAction::Kick) => (),

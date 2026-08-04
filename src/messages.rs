@@ -1,11 +1,29 @@
 use serenity::all::audit_log::Action;
 use serenity::all::{
-    AuditLogEntry, Channel, ChannelId, Colour, CreateEmbed, CreateEmbedAuthor, CreateMessage, GuildId, InviteCreateEvent, Member, MemberAction, MessageId, User, UserId,
+    AuditLogEntry, Channel, ChannelId, Colour, Context, CreateEmbed, CreateEmbedAuthor,
+    CreateMessage, GuildId, InviteCreateEvent, Member, MemberAction, MessageId, User, UserId,
 };
 use time::OffsetDateTime;
+use tokio::time::{Duration, sleep};
 
 use super::datastructures::UsedInvite;
 use super::format_time::format_time_diff;
+
+const MSG_RETRY_INTERVAL: Duration = Duration::from_millis(200);
+
+pub async fn send_message(message: CreateMessage, ctx: &Context, channel_id: ChannelId) {
+    if let Err(_) = channel_id.send_message(ctx, message.clone()).await {
+        sleep(MSG_RETRY_INTERVAL).await;
+
+        if let Err(e) = channel_id.send_message(ctx, message).await {
+            log::error!(
+                "Unable to send message to channel {} after retry: {}",
+                channel_id,
+                e
+            );
+        }
+    }
+}
 
 fn build_author_info(user: Option<User>, user_id: Option<UserId>) -> (String, CreateEmbedAuthor) {
     match (user, user_id) {
@@ -34,7 +52,6 @@ fn format_user(user: Option<User>, user_id: UserId) -> String {
         None => format!("<@{user_id}>"),
     }
 }
-
 
 fn format_channel(channel: Option<Channel>, channel_id: ChannelId) -> String {
     match channel {
@@ -152,7 +169,12 @@ pub fn build_join_message(
     CreateMessage::new().embed(embed)
 }
 
-pub fn build_leave_message(user: &User, last_join: Option<i64>, admin: Option<User>, entry: Option<AuditLogEntry>) -> CreateMessage {
+pub fn build_leave_message(
+    user: &User,
+    last_join: Option<i64>,
+    admin: Option<User>,
+    entry: Option<AuditLogEntry>,
+) -> CreateMessage {
     let user_id = user.id.get();
     let username = &user.name;
 
@@ -160,10 +182,12 @@ pub fn build_leave_message(user: &User, last_join: Option<i64>, admin: Option<Us
         let event_type = match entry.action {
             Action::Member(MemberAction::BanAdd) => "Banned",
             Action::Member(MemberAction::Kick) => "Kicked",
-            _ => "Kicked"
+            _ => "Kicked",
         };
 
-        let reason = if let Some(reason) = &entry.reason && !reason.is_empty() {
+        let reason = if let Some(reason) = &entry.reason
+            && !reason.is_empty()
+        {
             reason.trim()
         } else {
             "*No reason stated*"
@@ -182,7 +206,6 @@ pub fn build_leave_message(user: &User, last_join: Option<i64>, admin: Option<Us
     } else {
         ("MEMBER LEFT".to_string(), "".to_string())
     };
-
 
     let membership = match last_join {
         Some(ts) => {

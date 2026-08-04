@@ -2,7 +2,8 @@ use serenity::all::audit_log::Action;
 use serenity::all::{
     AuditLogEntry, Change, Channel, ChannelAction, ChannelId, ChannelType, Colour, Context,
     CreateEmbed, CreateEmbedAuthor, CreateMessage, EntityType, GuildId, InviteCreateEvent, Member,
-    MemberAction, MessageId, User, UserId,
+    MemberAction, MessageId, PermissionOverwrite, PermissionOverwriteType, Role, RoleId, User,
+    UserId,
 };
 use time::OffsetDateTime;
 use tokio::time::{Duration, sleep};
@@ -63,6 +64,13 @@ fn format_user(user: &Option<User>, user_id: UserId) -> String {
         None => format!("<@{user_id}>"),
     }
 }
+
+/*fn format_role(role: &Option<Role>, role_id: RoleId) -> String {
+    match role {
+        Some(user) => format!("<@&{role_id}>({})", &role.name),
+        None => format!("<@&{role_id}>"),
+    }
+}*/
 
 fn format_channel(channel: Option<Channel>, channel_id: ChannelId) -> String {
     match channel {
@@ -215,7 +223,7 @@ pub fn build_leave_message(
 
         (title, event_string)
     } else {
-        ("MEMBER LEFT".to_string(), "".to_string())
+        ("MEMBER LEFT".to_string(), String::new())
     };
 
     let membership = match last_join {
@@ -316,7 +324,7 @@ pub fn build_edited_message(
     let edited_string = match edits {
         1 => "(edited once)".to_string(),
         2.. => format!(" (edited {edits} times)"),
-        _ => "".to_string(),
+        _ => String::new(),
     };
 
     let message_link = format!("https://discord.com/channels/{guild}/{channel_id}/{message_id}");
@@ -365,7 +373,7 @@ pub fn build_deleted_message(
     let formatted_age = format_time_diff((now - created) as u64, 3);
 
     let edited_string = match edits {
-        0 => "".to_string(),
+        0 => String::new(),
         1 => " (edited)".to_string(),
         _ => format!(" (edited {edits} times)"),
     };
@@ -373,7 +381,7 @@ pub fn build_deleted_message(
     let deleter_info = if let Some(deleter_id) = deleter_id {
         format!("\n**Deleted by** {}", format_user(&deleter, deleter_id))
     } else {
-        "".to_string()
+        String::new()
     };
 
     let message_link = format!("https://discord.com/channels/{guild}/{channel_id}/{message_id}");
@@ -457,13 +465,16 @@ pub fn build_bulk_delete_message(
     CreateMessage::new().embed(embed)
 }
 
-pub async fn build_channel_message(entry: AuditLogEntry, ctx: &Context) -> CreateMessage {
+pub async fn build_channel_message(
+    entry: AuditLogEntry,
+    user: Option<User>,
+    ctx: &Context,
+) -> Option<CreateMessage> {
     let Some(target_id) = entry.target_id else {
         log::error!("No target channel id provided");
-        return CreateMessage::new();
+        return None;
     };
 
-    let user = entry.user_id.to_user(&ctx).await.ok();
     let user_str = format_user(&user, entry.user_id);
 
     let channel_id = ChannelId::new(target_id.get());
@@ -473,28 +484,35 @@ pub async fn build_channel_message(entry: AuditLogEntry, ctx: &Context) -> Creat
     let (action, colour) = match entry.action {
         Action::Channel(ChannelAction::Create) => ("created", Colour::new(0x00FF00)),
         Action::Channel(ChannelAction::Delete) => ("deleted", Colour::new(0xFF0000)),
-        Action::Channel(ChannelAction::Update) => ("updated", Colour::new(0xFFAA00)),
+        Action::Channel(ChannelAction::Update) => {
+            // ignore channel updates made by bots
+            if let Some(user) = &user
+                && user.bot
+            {
+                return None;
+            }
+            ("updated", Colour::new(0xFFAA00))
+        }
         a => {
             log::error!(
                 "Invalid action passed to channel message builder: {}",
                 a.num()
             );
-            return CreateMessage::new();
+            ("unknown action", Colour::new(0x000000))
         }
     };
-
-    let embed_author = build_embed_author(&user, entry.user_id);
 
     let changes = if let Some(changes) = entry.changes {
         changes
             .iter()
-            .filter_map(build_change_line)
+            .filter_map(build_channel_change_line)
             .collect::<Vec<_>>()
             .join("\n")
     } else {
-        "".to_string()
+        String::new()
     };
 
+    let embed_author = build_embed_author(&user, entry.user_id);
     let message = format!("{user_str} **{action}** {channel}\n\n{changes}");
     let title = format!("CHANNEL {}", action.to_uppercase());
 
@@ -504,10 +522,10 @@ pub async fn build_channel_message(entry: AuditLogEntry, ctx: &Context) -> Creat
         .color(colour)
         .description(message);
 
-    CreateMessage::new().embed(embed)
+    Some(CreateMessage::new().embed(embed))
 }
 
-fn build_change_line(change: &Change) -> Option<String> {
+fn build_channel_change_line(change: &Change) -> Option<String> {
     Some(match change {
         Change::Bitrate { old, new } => match (old, new) {
             (Some(old), Some(new)) => {
@@ -520,18 +538,19 @@ fn build_change_line(change: &Change) -> Option<String> {
         Change::Type { old, new } => match (old, new) {
             (Some(old), Some(new)) => format!(
                 "- **Type:** `{}` 🠞 `{}`",
-                format_type(old),
-                format_type(new)
+                format_channel_type(old),
+                format_channel_type(new)
             ),
-            (_, Some(new)) => format!("- **Type:** `{}`", format_type(new)),
+            (_, Some(new)) => format!("- **Type:** `{}`", format_channel_type(new)),
             _ => return None,
         },
         Change::UserLimit { old, new } => match (old, new) {
+            (None, Some(0)) => return None,
             (None, Some(new)) | (Some(0), Some(new)) => format!("- **User limit:** `{new}`"),
             (Some(old), None) | (Some(old), Some(0)) => {
-                format!("- **User limit disabled:** *was* `{old}s`")
+                format!("- **Slowmode disabled:** *was* `{old}s`")
             }
-            (Some(old), Some(new)) => format!("- **User limit:** `{old}` 🠞 `{new}s`",),
+            (Some(old), Some(new)) => format!("- **Slowmode:** `{old}` 🠞 `{new}`",),
             _ => return None,
         },
         Change::Name { old, new } => match (old, new) {
@@ -547,6 +566,7 @@ fn build_change_line(change: &Change) -> Option<String> {
             _ => return None,
         },
         Change::RateLimitPerUser { old, new } => match (old, new) {
+            (None, Some(0)) => return None, // going from nothing to 0 means it was never enabled
             (None, Some(new)) | (Some(0), Some(new)) => format!("- **Slowmode:** `{new}s`"),
             (Some(old), None) | (Some(old), Some(0)) => {
                 format!("- **Slowmode disabled:** *was* `{old}s`")
@@ -554,19 +574,25 @@ fn build_change_line(change: &Change) -> Option<String> {
             (Some(old), Some(new)) => format!("- **Slowmode:** `{old}` 🠞 `{new}s`",),
             _ => return None,
         },
-        Change::Nsfw { old: _, new } => match new {
-            Some(true) => format!("- **NSFW:** true",),
-            Some(false) => format!("- **NSFW:** false"),
+        Change::Nsfw { old, new } => match (old, new) {
+            (Some(old), None) => format!("- **NSFW:** *was {old}*"),
+            (_, Some(new)) => format!("- **NSFW:** *{new}*"),
+            _ => return None,
+        },
+        Change::Position { old: _, new } => match new {
+            Some(_) => "- **Position changed**".to_string(),
             _ => return None,
         },
 
+        // TODO
+        Change::PermissionOverwrites { old, new } => return None,
         Change::Flags { old: _, new: _ } => return None,
 
         _ => return None,
     })
 }
 
-fn format_type(entity_type: &EntityType) -> String {
+fn format_channel_type(entity_type: &EntityType) -> String {
     match entity_type {
         EntityType::Str(entity_type) => entity_type.to_string(),
         EntityType::Int(entity_type) => ChannelType::from(*entity_type as u8).name().to_string(),

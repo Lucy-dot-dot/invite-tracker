@@ -648,15 +648,9 @@ impl EventHandler for Handler {
     ) {
         let user = entry.user_id.to_user(&ctx).await.ok();
 
-        if let Some(user) = &user
-            && user.bot
-        {
-            return;
-        }
-
         let msg = match &entry.action {
             Action::GuildUpdate => return,
-            Action::Channel(_) => build_channel_message(entry, &ctx),
+            Action::Channel(_) => build_channel_message(entry, user, &ctx),
             Action::ChannelOverwrite(_) => return,
             Action::Member(_) => return,
             Action::Role(_) => return,
@@ -676,6 +670,10 @@ impl EventHandler for Handler {
             _ => return,
         }
         .await;
+
+        let Some(msg) = msg else {
+            return;
+        };
 
         send_message(msg, &ctx, self.config.join_leave_channel).await;
     }

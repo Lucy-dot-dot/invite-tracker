@@ -2,7 +2,7 @@ use serenity::all::audit_log::Action;
 use serenity::all::{
     AuditLogEntry, Change, Channel, ChannelAction, ChannelId, ChannelType, Colour, Context,
     CreateEmbed, CreateEmbedAuthor, CreateMessage, EntityType, GuildId, InviteCreateEvent, Member,
-    MemberAction, MessageId, PermissionOverwrite, PermissionOverwriteType, Role, RoleId, User,
+    MemberAction, MessageId, User,
     UserId,
 };
 use time::OffsetDateTime;
@@ -585,7 +585,7 @@ fn build_channel_change_line(change: &Change) -> Option<String> {
         },
 
         // TODO
-        Change::PermissionOverwrites { old, new } => return None,
+        Change::PermissionOverwrites { old: _, new: _ } => return None,
         Change::Flags { old: _, new: _ } => return None,
 
         _ => return None,

@@ -3,7 +3,7 @@ use discord_logging::audit_log::{
 };
 use discord_logging::config::Config;
 use discord_logging::db::purge_thread;
-use discord_logging::messages::send_message;
+use discord_logging::messages::{build_channel_message, send_message};
 use log::LevelFilter;
 use log4rs::append::console::ConsoleAppender;
 use log4rs::append::rolling_file::{
@@ -15,9 +15,10 @@ use log4rs::append::rolling_file::{
 use log4rs::config::{Appender, Config as LogConfig, Logger, Root};
 use log4rs::encode::pattern::PatternEncoder;
 use serenity::Client;
+use serenity::all::audit_log::Action;
 use serenity::all::{
-    ChannelId, Context, Guild, GuildId, InviteCreateEvent, InviteDeleteEvent, Member, Message,
-    MessageId, MessageUpdateEvent, Ready, RichInvite, User, UserId,
+    AuditLogEntry, ChannelId, Context, Guild, GuildId, InviteCreateEvent, InviteDeleteEvent,
+    Member, Message, MessageId, MessageUpdateEvent, Ready, RichInvite, User, UserId,
 };
 use serenity::futures::StreamExt;
 use serenity::prelude::{EventHandler, GatewayIntents};
@@ -639,6 +640,46 @@ impl EventHandler for Handler {
         send_message(msg, &ctx, self.config.deleted_msg_channel).await;
     }
 
+    async fn guild_audit_log_entry_create(
+        &self,
+        ctx: Context,
+        entry: AuditLogEntry,
+        _guild_id: GuildId,
+    ) {
+        let user = entry.user_id.to_user(&ctx).await.ok();
+
+        if let Some(user) = &user
+            && user.bot
+        {
+            return;
+        }
+
+        let msg = match &entry.action {
+            Action::GuildUpdate => return,
+            Action::Channel(_) => build_channel_message(entry, &ctx),
+            Action::ChannelOverwrite(_) => return,
+            Action::Member(_) => return,
+            Action::Role(_) => return,
+            Action::Invite(_) => return,
+            Action::Webhook(_) => return,
+            Action::Emoji(_) => return,
+            Action::Message(_) => return,
+            Action::Integration(_) => return,
+            Action::Sticker(_) => return,
+            Action::ScheduledEvent(_) => return,
+            Action::Thread(_) => return,
+            Action::AutoMod(_) => return,
+            Action::VoiceChannelStatus(_) => return,
+
+            Action::StageInstance(_) => return,
+            Action::CreatorMonetization(_) => return,
+            _ => return,
+        }
+        .await;
+
+        send_message(msg, &ctx, self.config.join_leave_channel).await;
+    }
+
     async fn ready(&self, _ctx: Context, _ready: Ready) {
         log::info!("Bot is online and watching for invites coming in");
     }
@@ -721,6 +762,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         | GatewayIntents::GUILD_MEMBERS
         | GatewayIntents::GUILD_INVITES
         | GatewayIntents::MESSAGE_CONTENT
+        | GatewayIntents::GUILD_MODERATION
         | GatewayIntents::GUILD_MESSAGES;
 
     let mut client = Client::builder(&token, intents)

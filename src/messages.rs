@@ -1,7 +1,8 @@
 use serenity::all::audit_log::Action;
 use serenity::all::{
-    AuditLogEntry, Channel, ChannelId, Colour, Context, CreateEmbed, CreateEmbedAuthor,
-    CreateMessage, GuildId, InviteCreateEvent, Member, MemberAction, MessageId, User, UserId,
+    AuditLogEntry, Change, Channel, ChannelAction, ChannelId, ChannelType, Colour, Context,
+    CreateEmbed, CreateEmbedAuthor, CreateMessage, EntityType, GuildId, InviteCreateEvent, Member,
+    MemberAction, MessageId, User, UserId,
 };
 use time::OffsetDateTime;
 use tokio::time::{Duration, sleep};
@@ -25,12 +26,12 @@ pub async fn send_message(message: CreateMessage, ctx: &Context, channel_id: Cha
     }
 }
 
-fn build_author_info(user: Option<User>, user_id: Option<UserId>) -> (String, CreateEmbedAuthor) {
+fn build_author_info(user: &Option<User>, user_id: Option<UserId>) -> (String, CreateEmbedAuthor) {
     match (user, user_id) {
         (Some(user), _) => {
             let msg = format!("**Message by** <@{}>({})", user.id, user.name);
             let avatar_url = user.avatar_url().unwrap_or_else(|| user.face());
-            let author = CreateEmbedAuthor::new(user.name).icon_url(avatar_url);
+            let author = CreateEmbedAuthor::new(&user.name).icon_url(avatar_url);
             (msg, author)
         }
         (None, Some(id)) => {
@@ -46,9 +47,19 @@ fn build_author_info(user: Option<User>, user_id: Option<UserId>) -> (String, Cr
     }
 }
 
-fn format_user(user: Option<User>, user_id: UserId) -> String {
+fn build_embed_author(user: &Option<User>, user_id: UserId) -> CreateEmbedAuthor {
+    match (user, user_id) {
+        (Some(user), _) => {
+            let avatar_url = user.avatar_url().unwrap_or_else(|| user.face());
+            CreateEmbedAuthor::new(&user.name).icon_url(avatar_url)
+        }
+        (None, user_id) => CreateEmbedAuthor::new(user_id.to_string()),
+    }
+}
+
+fn format_user(user: &Option<User>, user_id: UserId) -> String {
     match user {
-        Some(user) => format!("<@{user_id}>({})", user.name),
+        Some(user) => format!("<@{user_id}>({})", &user.name),
         None => format!("<@{user_id}>"),
     }
 }
@@ -193,7 +204,7 @@ pub fn build_leave_message(
             "*No reason stated*"
         };
 
-        let admin_string = format_user(admin, entry.user_id);
+        let admin_string = format_user(&admin, entry.user_id);
 
         let event_string = format!(
             "\n\n**{event_type} by ** {admin_string}\n\
@@ -298,7 +309,7 @@ pub fn build_edited_message(
 ) -> CreateMessage {
     let created = message_id.created_at().unix_timestamp();
 
-    let (message_author, embed_author) = build_author_info(user, user_id);
+    let (message_author, embed_author) = build_author_info(&user, user_id);
 
     let formatted_channel = format_channel(channel, channel_id);
 
@@ -341,7 +352,7 @@ pub fn build_deleted_message(
 ) -> CreateMessage {
     let created = message_id.created_at().unix_timestamp();
 
-    let (message_author, embed_author) = build_author_info(user, user_id);
+    let (message_author, embed_author) = build_author_info(&user, user_id);
 
     let formatted_channel = format_channel(channel, channel_id);
 
@@ -360,7 +371,7 @@ pub fn build_deleted_message(
     };
 
     let deleter_info = if let Some(deleter_id) = deleter_id {
-        format!("\n**Deleted by** {}", format_user(deleter, deleter_id))
+        format!("\n**Deleted by** {}", format_user(&deleter, deleter_id))
     } else {
         "".to_string()
     };
@@ -444,4 +455,121 @@ pub fn build_bulk_delete_message(
         .description(embed_description);
 
     CreateMessage::new().embed(embed)
+}
+
+pub async fn build_channel_message(entry: AuditLogEntry, ctx: &Context) -> CreateMessage {
+    let Some(target_id) = entry.target_id else {
+        log::error!("No target channel id provided");
+        return CreateMessage::new();
+    };
+
+    let user = entry.user_id.to_user(&ctx).await.ok();
+    let user_str = format_user(&user, entry.user_id);
+
+    let channel_id = ChannelId::new(target_id.get());
+    let channel = channel_id.to_channel(&ctx).await.ok();
+    let channel = format_channel(channel, channel_id);
+
+    let (action, colour) = match entry.action {
+        Action::Channel(ChannelAction::Create) => ("created", Colour::new(0x00FF00)),
+        Action::Channel(ChannelAction::Delete) => ("deleted", Colour::new(0xFF0000)),
+        Action::Channel(ChannelAction::Update) => ("updated", Colour::new(0xFFAA00)),
+        a => {
+            log::error!(
+                "Invalid action passed to channel message builder: {}",
+                a.num()
+            );
+            return CreateMessage::new();
+        }
+    };
+
+    let embed_author = build_embed_author(&user, entry.user_id);
+
+    let changes = if let Some(changes) = entry.changes {
+        changes
+            .iter()
+            .filter_map(build_change_line)
+            .collect::<Vec<_>>()
+            .join("\n")
+    } else {
+        "".to_string()
+    };
+
+    let message = format!("{user_str} **{action}** {channel}\n\n{changes}");
+    let title = format!("CHANNEL {}", action.to_uppercase());
+
+    let embed = CreateEmbed::new()
+        .title(title)
+        .author(embed_author)
+        .color(colour)
+        .description(message);
+
+    CreateMessage::new().embed(embed)
+}
+
+fn build_change_line(change: &Change) -> Option<String> {
+    Some(match change {
+        Change::Bitrate { old, new } => match (old, new) {
+            (Some(old), Some(new)) => {
+                format!("- **Bitrate:** `{}` 🠞 `{} kbps`", old / 1000, new / 1000)
+            }
+            (None, Some(new)) => format!("- **Bitrate:** `{} kbps`", new / 1000),
+            (Some(old), None) => format!("- **Bitrate reset:** *was* `{} kbps`", old / 1000),
+            _ => return None,
+        },
+        Change::Type { old, new } => match (old, new) {
+            (Some(old), Some(new)) => format!(
+                "- **Type:** `{}` 🠞 `{}`",
+                format_type(old),
+                format_type(new)
+            ),
+            (_, Some(new)) => format!("- **Type:** `{}`", format_type(new)),
+            _ => return None,
+        },
+        Change::UserLimit { old, new } => match (old, new) {
+            (None, Some(new)) | (Some(0), Some(new)) => format!("- **User limit:** `{new}`"),
+            (Some(old), None) | (Some(old), Some(0)) => {
+                format!("- **User limit disabled:** *was* `{old}s`")
+            }
+            (Some(old), Some(new)) => format!("- **User limit:** `{old}` 🠞 `{new}s`",),
+            _ => return None,
+        },
+        Change::Name { old, new } => match (old, new) {
+            (Some(old), Some(new)) => format!("- **Name:** {old} 🠞 {new}",),
+            (None, Some(new)) => format!("- **Name:** {new}"),
+            (Some(old), None) => format!("- **Name:** *was* {old}"),
+            _ => return None,
+        },
+        Change::Description { old, new } | Change::Topic { old, new } => match (old, new) {
+            (Some(old), Some(new)) => format!("- **Description:** \"{old}\" 🠞 \"{new}\"",),
+            (None, Some(new)) => format!("- **Description:** \"{new}\""),
+            (Some(old), None) => format!("- **Description removed:** *was* \"{old}\""),
+            _ => return None,
+        },
+        Change::RateLimitPerUser { old, new } => match (old, new) {
+            (None, Some(new)) | (Some(0), Some(new)) => format!("- **Slowmode:** `{new}s`"),
+            (Some(old), None) | (Some(old), Some(0)) => {
+                format!("- **Slowmode disabled:** *was* `{old}s`")
+            }
+            (Some(old), Some(new)) => format!("- **Slowmode:** `{old}` 🠞 `{new}s`",),
+            _ => return None,
+        },
+        Change::Nsfw { old: _, new } => match new {
+            Some(true) => format!("- **NSFW:** true",),
+            Some(false) => format!("- **NSFW:** false"),
+            _ => return None,
+        },
+
+        Change::Flags { old: _, new: _ } => return None,
+
+        _ => return None,
+    })
+}
+
+fn format_type(entity_type: &EntityType) -> String {
+    match entity_type {
+        EntityType::Str(entity_type) => entity_type.to_string(),
+        EntityType::Int(entity_type) => ChannelType::from(*entity_type as u8).name().to_string(),
+        _ => "unknown".to_string(),
+    }
 }

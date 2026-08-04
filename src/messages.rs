@@ -362,6 +362,12 @@ pub fn build_deleted_message(
 
     let (message_author, embed_author) = build_author_info(&user, user_id);
 
+    let deleter_info = if let Some(deleter_id) = deleter_id {
+        format!("\n**Deleted by** {}", format_user(&deleter, deleter_id))
+    } else {
+        String::new()
+    };
+
     let formatted_channel = format_channel(channel, channel_id);
 
     let content = match content {
@@ -378,11 +384,6 @@ pub fn build_deleted_message(
         _ => format!(" (edited {edits} times)"),
     };
 
-    let deleter_info = if let Some(deleter_id) = deleter_id {
-        format!("\n**Deleted by** {}", format_user(&deleter, deleter_id))
-    } else {
-        String::new()
-    };
 
     let message_link = format!("https://discord.com/channels/{guild}/{channel_id}/{message_id}");
 

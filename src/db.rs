@@ -50,14 +50,23 @@ pub async fn purge_thread(pool: PgPool, max_age_seconds: u32, seconds_interval: 
 
         // Just in case discord snowflakes overflow (in 140 years) this will just stop purging instead of deleting everything
         if let Err(e) = sqlx::query(
-            "DELETE FROM messages WHERE id < $1 AND id > 0;\
-                 DELETE FROM audit_log_entries WHERE id < $1 AND id > 0;",
+            "DELETE FROM messages WHERE id < $1 AND id > 0",
         )
         .bind(snowflake_threshold as i64)
         .execute(&pool)
         .await
         {
-            log::error!("Failed to purge data from db: {}", e);
+            log::error!("Failed to purge data from deleted messages db: {}", e);
+        }
+
+        if let Err(e) = sqlx::query(
+            "DELETE FROM audit_logs WHERE id < $1 AND id > 0",
+        )
+        .bind(snowflake_threshold as i64)
+        .execute(&pool)
+        .await
+        {
+            log::error!("Failed to purge data from audit log db: {}", e);
         }
 
         sleep(interval).await;

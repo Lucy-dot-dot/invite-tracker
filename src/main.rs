@@ -675,7 +675,7 @@ impl EventHandler for Handler {
             return;
         };
 
-        send_message(msg, &ctx, self.config.join_leave_channel).await;
+        send_message(msg, &ctx, self.config.audit_log_channel).await;
     }
 
     async fn ready(&self, _ctx: Context, _ready: Ready) {

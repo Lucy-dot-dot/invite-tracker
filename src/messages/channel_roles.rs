@@ -3,7 +3,7 @@ use serenity::all::{
     CreateMessage, EntityType, User, audit_log::Action,
 };
 
-use crate::messages::utils::{build_embed_author, format_channel, format_user};
+use crate::{format_boolean_change, format_numeric_change, format_string_change, messages::utils::{build_embed_author, format_channel, format_user}};
 
 pub async fn build_channel_message(
     entry: AuditLogEntry,
@@ -72,7 +72,7 @@ fn build_channel_change_line(change: &Change) -> Option<String> {
                 format!("- **Bitrate:** `{}` 🠞 `{} kbps`", old / 1000, new / 1000)
             }
             (None, Some(new)) => format!("- **Bitrate:** `{} kbps`", new / 1000),
-            (Some(old), None) => format!("- **Bitrate reset:** *was* `{} kbps`", old / 1000),
+            (Some(old), None) => format!("- **Bitrate:** *was* `{} kbps`", old / 1000),
             _ => return None,
         },
         Change::Type { old, new } => match (old, new) {
@@ -84,45 +84,11 @@ fn build_channel_change_line(change: &Change) -> Option<String> {
             (_, Some(new)) => format!("- **Type:** `{}`", format_channel_type(new)),
             _ => return None,
         },
-        Change::UserLimit { old, new } => match (old, new) {
-            (None, Some(0)) => return None,
-            (None, Some(new)) | (Some(0), Some(new)) => format!("- **User limit:** `{new}`"),
-            (Some(old), None) | (Some(old), Some(0)) => {
-                format!("- **Slowmode disabled:** *was* `{old}s`")
-            }
-            (Some(old), Some(new)) => format!("- **Slowmode:** `{old}` 🠞 `{new}`",),
-            _ => return None,
-        },
-        Change::Name { old, new } => match (old, new) {
-            (Some(old), Some(new)) => format!("- **Name:** \"{old}\" 🠞 \"{new}\"",),
-            (None, Some(new)) => format!("- **Name:** \"{new}\""),
-            (Some(old), None) => format!("- **Name:** *was* \"{old}\""),
-            _ => return None,
-        },
-        Change::Description { old, new } | Change::Topic { old, new } => match (old, new) {
-            (Some(old), Some(new)) => format!("- **Description:** \"{old}\" 🠞 \"{new}\"",),
-            (None, Some(new)) => format!("- **Description:** \"{new}\""),
-            (Some(old), None) => format!("- **Description removed:** *was* \"{old}\""),
-            _ => return None,
-        },
-        Change::RateLimitPerUser { old, new } => match (old, new) {
-            (None, Some(0)) => return None, // going from nothing to 0 means it was never enabled
-            (None, Some(new)) | (Some(0), Some(new)) => format!("- **Slowmode:** `{new}s`"),
-            (Some(old), None) | (Some(old), Some(0)) => {
-                format!("- **Slowmode disabled:** *was* `{old}s`")
-            }
-            (Some(old), Some(new)) => format!("- **Slowmode:** `{old}` 🠞 `{new}s`",),
-            _ => return None,
-        },
-        Change::Nsfw { old, new } => match (old, new) {
-            (Some(old), None) => format!("- **NSFW:** *was {old}*"),
-            (_, Some(new)) => format!("- **NSFW:** *{new}*"),
-            _ => return None,
-        },
-        Change::Position { old: _, new } => match new {
-            Some(_) => "- **Position changed**".to_string(),
-            _ => return None,
-        },
+        Change::UserLimit { old, new } => format_numeric_change!("User limit", "", old, new),
+        Change::Name { old, new } => format_string_change!("Name", old, new),
+        Change::Topic { old, new } => format_string_change!("Description", old, new),
+        Change::RateLimitPerUser { old, new } => format_numeric_change!("Slowmode", " s", old, new),
+        Change::Nsfw { old, new } => format_boolean_change!("NSFW", old, new),
 
         // TODO
         Change::PermissionOverwrites { old: _, new: _ } => return None,
@@ -139,3 +105,4 @@ fn format_channel_type(entity_type: &EntityType) -> String {
         _ => "unknown".to_string(),
     }
 }
+

@@ -73,3 +73,53 @@ pub fn format_channel(channel: Option<Channel>, channel_id: ChannelId) -> String
         _ => format!("<#{channel_id}>"),
     }
 }
+
+#[macro_export]
+macro_rules! format_numeric_change {
+    ($name:expr, $unit:expr, $old:expr, $new:expr) => {{
+        const NAME: &str = $name;
+        const UNIT: &str = $unit; 
+        let old = $old;
+        let new = $new;
+        
+       match (old, new) {
+            (None, Some(0)) => return None,
+            (None, Some(new)) | (Some(0), Some(new)) => format!("- **{NAME}:** `{new}{UNIT}`").into(),
+            (Some(old), None) | (Some(old), Some(0)) => format!("- **{NAME} disabled:** *was* `{old}{UNIT}`").into(),
+            (Some(old), Some(new)) => format!("- **{NAME}:** `{old}` 🠞 `{new}{UNIT}`",).into(),
+            _ => return None,
+        }
+    }}
+}
+
+#[macro_export]
+macro_rules! format_string_change {
+    ($name:expr, $old:expr, $new:expr) => {{
+        const NAME: &str = $name;
+        let old = $old;
+        let new = $new;
+        
+        match (old, new) {
+                (Some(old), Some(new)) => format!("- **{NAME}:** \"{old}\" 🠞 \"{new}\"").into(),
+                (None, Some(new)) => format!("- **{NAME}:** \"{new}\"").into(),
+                (Some(old), None) => format!("- **{NAME}:** *was* \"{old}\"").into(),
+                _ => return None,
+            }
+    }}
+}
+
+#[macro_export]
+macro_rules! format_boolean_change {
+    ($name:expr, $old:expr, $new:expr) => {{
+        const NAME: &str = $name;
+        let old = $old;
+        let new = $new;
+        
+        match (old, new) {
+                (Some(_), Some(new)) => format!("- **{NAME}:** `{new}`").into(),
+                (None, Some(true)) => format!("- **{NAME}:** `true`").into(),
+                (Some(true), None) => format!("- **{NAME}:** *was* `true`").into(),
+                _ => return None,
+            }
+    }}
+}

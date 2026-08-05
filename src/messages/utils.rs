@@ -93,6 +93,26 @@ macro_rules! format_numeric_change {
 }
 
 #[macro_export]
+macro_rules! format_numeric_change_operation {
+    ($name:expr, $unit:expr, $old:expr, $new:expr, $operation: expr) => {{
+        const NAME: &str = $name;
+        const UNIT: &str = $unit; 
+        let op = $operation;
+        let old = $old;
+        let new = $new;
+        
+       match (old, new) {
+            (None, Some(0)) => return None,
+            (None, Some(new)) | (Some(0), Some(new)) => format!("- **{NAME}:** `{}{UNIT}`", op(new)).into(),
+            (Some(old), None) | (Some(old), Some(0)) => format!("- **{NAME} disabled:** *was* `{}{UNIT}`", op(old)).into(),
+            (Some(old), Some(new)) => format!("- **{NAME}:** `{}` 🠞 `{}{UNIT}`", op(old), op(new)).into(),
+            _ => return None,
+        }
+    }}
+}
+
+
+#[macro_export]
 macro_rules! format_string_change {
     ($name:expr, $old:expr, $new:expr) => {{
         const NAME: &str = $name;

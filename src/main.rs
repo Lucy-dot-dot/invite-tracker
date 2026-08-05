@@ -644,16 +644,17 @@ impl EventHandler for Handler {
         &self,
         ctx: Context,
         entry: AuditLogEntry,
-        _guild_id: GuildId,
+        guild_id: GuildId,
     ) {
         let user = entry.user_id.to_user(&ctx).await.ok();
 
         let msg = match &entry.action {
             Action::GuildUpdate => return,
-            Action::Channel(_) => messages::channel_roles::build_channel_message(entry, user, &ctx),
+            Action::Channel(_) => messages::channel::build_channel_message(entry, user, &ctx).await,
+            Action::Role(_) => messages::roles::build_role_message(entry, user, guild_id, &ctx).await,
             Action::ChannelOverwrite(_) => return,
+            Action::Thread(_) => return,
             Action::Member(_) => return,
-            Action::Role(_) => return,
             Action::Invite(_) => return,
             Action::Webhook(_) => return,
             Action::Emoji(_) => return,
@@ -661,15 +662,13 @@ impl EventHandler for Handler {
             Action::Integration(_) => return,
             Action::Sticker(_) => return,
             Action::ScheduledEvent(_) => return,
-            Action::Thread(_) => return,
             Action::AutoMod(_) => return,
             Action::VoiceChannelStatus(_) => return,
 
             Action::StageInstance(_) => return,
             Action::CreatorMonetization(_) => return,
             _ => return,
-        }
-        .await;
+        };
 
         let Some(msg) = msg else {
             return;

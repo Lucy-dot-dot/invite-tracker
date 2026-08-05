@@ -37,12 +37,12 @@ pub fn build_embed_author_admin(
     match (user, admin) {
         (Some(user), Some(admin)) => {
             let avatar_url = user.avatar_url().unwrap_or_else(|| user.face());
-            let embed_author = format!("{} 🠞 {}", &admin.name, &user.name);
+            let embed_author = format!("{} ➜ {}", &admin.name, &user.name);
             return CreateEmbedAuthor::new(embed_author).icon_url(avatar_url);
         }
         (None, Some(admin)) => {
             let avatar_url = admin.avatar_url().unwrap_or_else(|| admin.face());
-            let embed_author = format!("{} 🠞 {}", &admin.name, user_id);
+            let embed_author = format!("{} ➜ {}", &admin.name, user_id);
             CreateEmbedAuthor::new(embed_author).icon_url(avatar_url)
         }
         _ => build_embed_author(user, user_id),
@@ -90,7 +90,7 @@ macro_rules! format_numeric_change {
             (Some(old), None) | (Some(old), Some(0)) => {
                 format!("- **{NAME} disabled:** *was* `{old}{UNIT}`").into()
             }
-            (Some(old), Some(new)) => format!("- **{NAME}:** `{old}` 🠞 `{new}{UNIT}`",).into(),
+            (Some(old), Some(new)) => format!("- **{NAME}:** `{old}` ➜ `{new}{UNIT}`",).into(),
             _ => return None,
         }
     }};
@@ -114,7 +114,7 @@ macro_rules! format_numeric_change_operation {
                 format!("- **{NAME} disabled:** *was* `{}{UNIT}`", op(old)).into()
             }
             (Some(old), Some(new)) => {
-                format!("- **{NAME}:** `{}` 🠞 `{}{UNIT}`", op(old), op(new)).into()
+                format!("- **{NAME}:** `{}` ➜ `{}{UNIT}`", op(old), op(new)).into()
             }
             _ => return None,
         }
@@ -129,7 +129,7 @@ macro_rules! format_string_change {
         let new = $new;
 
         match (old, new) {
-            (Some(old), Some(new)) => format!("- **{NAME}:** \"{old}\" 🠞 \"{new}\"").into(),
+            (Some(old), Some(new)) => format!("- **{NAME}:** \"{old}\" ➜ \"{new}\"").into(),
             (None, Some(new)) => format!("- **{NAME}:** \"{new}\"").into(),
             (Some(old), None) => format!("- **{NAME}:** *was* \"{old}\"").into(),
             _ => return None,

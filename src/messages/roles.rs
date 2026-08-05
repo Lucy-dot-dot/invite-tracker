@@ -66,15 +66,16 @@ fn build_role_change_line(change: &Change) -> Option<String> {
         Change::Name { old, new } => format_string_change!("Name", old, new),
         Change::Hoist { old, new } => format_boolean_change!("Hoisted", old, new),
         Change::Mentionable { old, new } => format_boolean_change!("Pingable", old, new),
-        Change::UnicodeEmoji { old, new } => format_string_change!("icon", old, new),
+        Change::UnicodeEmoji { old, new } => format_string_change!("Icon", old, new),
+        // TODO: Support Colors when it will be updated
         Change::Color { old, new } => {
             format_numeric_change_operation!("Colour", "", old, new, |c| format!("#{:06X}", c))
         }
 
         Change::Permissions { old, new } => match (old, new) {
             (Some(old), Some(new)) => return format_permission_change(old, new),
-            (None, Some(new)) => return format_permission(new),
-            (Some(old), None) => return format_permission(old),
+            (None, Some(new)) => format_permission(new),
+            (Some(old), None) => format_permission(old),
             _ => return None,
         },
 
@@ -117,7 +118,7 @@ fn format_permission_change(old: &Permissions, new: &Permissions) -> Option<Stri
     Some(result.join("\n"))
 }
 
-fn format_permission(perm: &Permissions) -> Option<String> {
+fn format_permission(perm: &Permissions) -> String {
     let mut result = Vec::new();
 
     result.push("- **Permissions:**".to_string());
@@ -127,8 +128,8 @@ fn format_permission(perm: &Permissions) -> Option<String> {
     }
 
     if result.is_empty() {
-        return None;
+        return "- **Permissions:** *none*".to_string();
     }
 
-    Some(result.join("\n"))
+    result.join("\n")
 }

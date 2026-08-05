@@ -651,8 +651,12 @@ impl EventHandler for Handler {
         let msg = match &entry.action {
             Action::GuildUpdate => return,
             Action::Channel(_) => messages::channel::build_channel_message(entry, user, &ctx).await,
-            Action::Role(_) => messages::roles::build_role_message(entry, user, guild_id, &ctx).await,
-            Action::ChannelOverwrite(_) => return,
+            Action::ChannelOverwrite(_) => {
+                messages::channel::build_permission_override_message(entry, user, &ctx).await
+            }
+            Action::Role(_) => {
+                messages::roles::build_role_message(entry, user, guild_id, &ctx).await
+            }
             Action::Thread(_) => return,
             Action::Member(_) => return,
             Action::Invite(_) => return,

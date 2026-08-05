@@ -1,12 +1,13 @@
 use serenity::all::{
-    AuditLogEntry, Change, ChannelAction, ChannelFlags, ChannelId, ChannelType, Colour, Context,
-    CreateEmbed, CreateMessage, EntityType, User, audit_log::Action,
+    AuditLogEntry, Change, ChannelAction, ChannelFlags, ChannelId, ChannelOverwriteAction,
+    ChannelType, Colour, Context, CreateEmbed, CreateMessage, EntityType, GuildId,
+    PermissionOverwrite, PermissionOverwriteType, Permissions, User, UserId, audit_log::Action,
 };
 
 use crate::{
     format_boolean_change, format_numeric_change, format_numeric_change_operation,
     format_string_change,
-    messages::utils::{build_embed_author, format_channel, format_user},
+    messages::utils::{build_embed_author, format_channel, format_role, format_user},
 };
 
 pub async fn build_channel_message(
@@ -69,6 +70,116 @@ pub async fn build_channel_message(
     Some(CreateMessage::new().embed(embed))
 }
 
+pub async fn build_permission_override_message(
+    entry: AuditLogEntry,
+    user: Option<User>,
+    ctx: &Context,
+) -> Option<CreateMessage> {
+    let Some(target_id) = entry.target_id else {
+        log::error!("No target channel id provided");
+        return None;
+    };
+
+    let Some(options) = entry.options else {
+        return None;
+    };
+
+    let Some(permission_target_id) = options.id else {
+        return None;
+    };
+
+    let user_str = format_user(&user, entry.user_id);
+
+    let channel_id = ChannelId::new(target_id.get());
+    let channel = channel_id.to_channel(&ctx).await.ok();
+    let channel = format_channel(channel, channel_id);
+
+    let permission_target_string = if let Some(role_name) = options.role_name {
+        if role_name == "@everyone" {
+            "- **Permissions for** @everyone".to_string()
+        } else {
+            format!("- **Permissions for role** <@&{permission_target_id}>({role_name})")
+        }
+    } else {
+        let user_id = UserId::new(permission_target_id.get());
+        let user = user_id.to_user(&ctx).await.ok();
+        format!("- **Permissions for user** {}", format_user(&user, user_id))
+    };
+
+    let Some(changes) = entry.changes else {
+        log::error!("Changes not present in permission override log");
+        return None;
+    };
+
+    let (action, colour) = match entry.action {
+        Action::ChannelOverwrite(ChannelOverwriteAction::Create) => {
+            ("created", Colour::new(0xFFAA00))
+        }
+        Action::ChannelOverwrite(ChannelOverwriteAction::Delete) => {
+            ("deleted", Colour::new(0xFFAA00))
+        }
+        Action::ChannelOverwrite(ChannelOverwriteAction::Update) => {
+            ("updated", Colour::new(0xFFAA00))
+        }
+        a => {
+            log::error!(
+                "Invalid action passed to channel message builder: {}",
+                a.num()
+            );
+            ("unknown action", Colour::new(0x000000))
+        }
+    };
+
+    let allow = changes
+        .iter()
+        .find(|&x| matches!(x, Change::Allow { old: _, new: _ }));
+    let deny = changes
+        .iter()
+        .find(|&x| matches!(x, Change::Deny { old: _, new: _ }));
+
+    let permission_changes_str = match (allow, deny) {
+        (
+            Some(Change::Allow {
+                old: old_allow,
+                new: new_allow,
+            }),
+            Some(Change::Deny {
+                old: old_deny,
+                new: new_deny,
+            }),
+        ) => match (old_allow, new_allow, old_deny, new_deny) {
+            (Some(old_allow), Some(new_allow), Some(old_deny), Some(new_deny)) => {
+                format_permission_override_change(*old_allow, *new_allow, *old_deny, *new_deny)
+            }
+            (None, Some(new_allow), None, Some(new_deny)) => {
+                format_permission_override(*new_allow, *new_deny)
+            }
+            (Some(old_allow), None, Some(old_deny), None) => {
+                format_permission_override(*old_allow, *old_deny)
+            }
+            _ => "ERROR WHILE PROCESSING PERMISSION CHANGES".to_string(),
+        },
+        _ => "ERROR WHILE PROCESSING PERMISSION CHANGES".to_string(),
+    };
+
+    let embed_author = build_embed_author(&user, entry.user_id);
+    let message = format!(
+        "{user_str} **{action} permission override**\n\
+                    **for channel** {channel}\n\n\
+                    {permission_target_string}:\n\
+                    {permission_changes_str}"
+    );
+    let title = format!("PERMISSION OVERRIDE {}", action.to_uppercase());
+
+    let embed = CreateEmbed::new()
+        .title(title)
+        .author(embed_author)
+        .color(colour)
+        .description(message);
+
+    Some(CreateMessage::new().embed(embed))
+}
+
 fn build_channel_change_line(change: &Change) -> Option<String> {
     Some(match change {
         Change::UserLimit { old, new } => format_numeric_change!("User limit", "", old, new),
@@ -85,7 +196,7 @@ fn build_channel_change_line(change: &Change) -> Option<String> {
 
         Change::Type { old, new } => match (old, new) {
             (Some(old), Some(new)) => format!(
-                "- **Type:** `{}` 🠞 `{}`",
+                "- **Type:** `{}` ➜ `{}`",
                 format_channel_type(old),
                 format_channel_type(new)
             ),
@@ -94,7 +205,11 @@ fn build_channel_change_line(change: &Change) -> Option<String> {
         },
 
         // TODO
-        Change::PermissionOverwrites { old: _, new: _ } => return None,
+        Change::PermissionOverwrites { old, new } => match (old, new) {
+            (_, Some(new)) => format_permission_override_channel(new),
+            (Some(old), _) => format_permission_override_channel(old),
+            _ => return None,
+        },
         Change::Flags { old, new } => match (old, new) {
             (Some(old), Some(new)) => return format_flags_diff(old, new),
             (None, Some(new)) => return format_flags(new),
@@ -154,4 +269,77 @@ fn format_flags(flags: &u64) -> Option<String> {
     }
 
     Some(result.join("\n"))
+}
+
+fn format_permission_override_channel(permission_overrides: &Vec<PermissionOverwrite>) -> String {
+    let mut result = Vec::new();
+    for permission in permission_overrides {
+        let permission_line = match permission.kind {
+            PermissionOverwriteType::Role(role_id) => {
+                format!("- **Permissions for role** <@&{role_id}>")
+            }
+            PermissionOverwriteType::Member(user_id) => {
+                format!("- **Permissions for user** <@{user_id}>")
+            }
+            _ => "Invalid permission".to_string(),
+        };
+
+        result.push(permission_line);
+        result.push(format_permission_override(
+            permission.allow,
+            permission.deny,
+        ));
+    }
+    result.join("\n")
+}
+
+fn format_permission_override(allow: Permissions, deny: Permissions) -> String {
+    let combined_perms = allow | deny;
+
+    let mut result = Vec::new();
+
+    for perm in combined_perms.iter() {
+        result.push(format!("  - {perm}: {}", perm_to_icon(allow, deny, perm),));
+    }
+
+    if result.is_empty() {
+        return "  - *none*".to_string();
+    }
+
+    result.join("\n")
+}
+
+fn format_permission_override_change(
+    old_allow: Permissions,
+    new_allow: Permissions,
+    old_deny: Permissions,
+    new_deny: Permissions,
+) -> String {
+    let perms_difference = (old_allow ^ new_allow) | (old_deny ^ new_deny);
+
+    let mut result = Vec::new();
+
+    for perm in perms_difference.iter() {
+        result.push(format!(
+            "  - {perm}: {} ➜ {}",
+            perm_to_icon(old_allow, old_deny, perm),
+            perm_to_icon(new_allow, new_deny, perm),
+        ));
+    }
+
+    if result.is_empty() {
+        return "  - *none*".to_string();
+    }
+
+    result.join("\n")
+}
+
+fn perm_to_icon(allow: Permissions, deny: Permissions, perm: Permissions) -> &'static str {
+    if perm.intersects(allow) {
+        return "✅";
+    }
+    if perm.intersects(deny) {
+        return "❌";
+    }
+    "`╱`"
 }

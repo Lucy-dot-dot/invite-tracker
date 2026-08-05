@@ -3,7 +3,8 @@ use discord_logging::audit_log::{
 };
 use discord_logging::config::Config;
 use discord_logging::db::purge_thread;
-use discord_logging::messages::{build_channel_message, send_message};
+use discord_logging::messages;
+use discord_logging::messages::utils::send_message;
 use log::LevelFilter;
 use log4rs::append::console::ConsoleAppender;
 use log4rs::append::rolling_file::{
@@ -29,7 +30,7 @@ use stringmetrics::levenshtein_limit;
 use time::OffsetDateTime;
 
 use discord_logging::datastructures::UsedInvite;
-use discord_logging::{db::initialize_database_pool, messages};
+use discord_logging::db::initialize_database_pool;
 
 pub struct Handler {
     config: Arc<Config>,
@@ -284,7 +285,7 @@ impl EventHandler for Handler {
 
         let used_invite = self.sync_invites_find_used(&ctx, new_member.guild_id).await;
 
-        let msg = messages::build_join_message(
+        let msg = messages::invites::build_join_message(
             &new_member,
             join_amount,
             prev_last_join,
@@ -317,7 +318,7 @@ impl EventHandler for Handler {
             None
         };
 
-        let msg = messages::build_leave_message(&user, last_join, admin, entry);
+        let msg = messages::invites::build_leave_message(user, last_join, admin, entry);
         send_message(msg, &ctx, self.config.join_leave_channel).await;
     }
 
@@ -355,7 +356,7 @@ impl EventHandler for Handler {
             log::error!("Failed to insert invite {}: {}", data.code, e);
         }
 
-        let msg = messages::build_invite_message(&data);
+        let msg = messages::invites::build_invite_message(&data);
         send_message(msg, &ctx, self.config.join_leave_channel).await;
     }
 
@@ -453,9 +454,9 @@ impl EventHandler for Handler {
                 return;
             }
 
-            let msg = messages::build_edited_message(
+            let msg = messages::messages::build_edited_message(
                 event.author,
-                Some(UserId::new(user_id as u64)),
+                UserId::new(user_id as u64),
                 event.channel_id.to_channel(&ctx).await.ok(),
                 event.channel_id,
                 guild,
@@ -528,9 +529,7 @@ impl EventHandler for Handler {
                 let audit_user_id = UserId::new(audit_user_id.get());
                 user_id = Some(audit_user_id);
                 user = audit_user_id.to_user(&ctx).await.ok();
-            }
-
-            log::error!("{}",deleter_id.get());
+            };
             (Some(deleter_id), deleter_user)
         } else {
             // Ignore bots only if the message is deleted by the bot itself
@@ -543,7 +542,7 @@ impl EventHandler for Handler {
             (None, None)
         };
 
-        let msg = messages::build_deleted_message(
+        let msg = messages::messages::build_deleted_message(
             user,
             user_id,
             deleter_user,
@@ -631,7 +630,7 @@ impl EventHandler for Handler {
             messages_with_user.push((user_id, user, messages));
         }
 
-        let msg = messages::build_bulk_delete_message(
+        let msg = messages::messages::build_bulk_delete_message(
             messages_with_user,
             channel_id.to_channel(&ctx).await.ok(),
             channel_id,
@@ -645,16 +644,21 @@ impl EventHandler for Handler {
         &self,
         ctx: Context,
         entry: AuditLogEntry,
-        _guild_id: GuildId,
+        guild_id: GuildId,
     ) {
         let user = entry.user_id.to_user(&ctx).await.ok();
 
         let msg = match &entry.action {
             Action::GuildUpdate => return,
-            Action::Channel(_) => build_channel_message(entry, user, &ctx),
-            Action::ChannelOverwrite(_) => return,
+            Action::Channel(_) => messages::channel::build_channel_message(entry, user, &ctx).await,
+            Action::ChannelOverwrite(_) => {
+                messages::channel::build_permission_override_message(entry, user, &ctx).await
+            }
+            Action::Role(_) => {
+                messages::roles::build_role_message(entry, user, guild_id, &ctx).await
+            }
+            Action::Thread(_) => return,
             Action::Member(_) => return,
-            Action::Role(_) => return,
             Action::Invite(_) => return,
             Action::Webhook(_) => return,
             Action::Emoji(_) => return,
@@ -662,15 +666,13 @@ impl EventHandler for Handler {
             Action::Integration(_) => return,
             Action::Sticker(_) => return,
             Action::ScheduledEvent(_) => return,
-            Action::Thread(_) => return,
             Action::AutoMod(_) => return,
             Action::VoiceChannelStatus(_) => return,
 
             Action::StageInstance(_) => return,
             Action::CreatorMonetization(_) => return,
             _ => return,
-        }
-        .await;
+        };
 
         let Some(msg) = msg else {
             return;

@@ -2,7 +2,7 @@ use serenity::all::{
     AuditLogEntry, Change, Colour, Context, CreateEmbed, CreateMessage, GuildId, Permissions, RoleAction, RoleId, User, audit_log::Action,
 };
 
-use crate::{format_boolean_change, format_string_change, messages::{utils::{build_embed_author, format_role, format_user}}};
+use crate::{format_boolean_change, format_numeric_change_operation, format_string_change, messages::utils::{build_embed_author, format_role, format_user}};
 
 pub async fn build_role_message(
     entry: AuditLogEntry,
@@ -24,15 +24,7 @@ pub async fn build_role_message(
     let (action, colour) = match entry.action {
         Action::Role(RoleAction::Create) => ("created", Colour::new(0x00FF00)),
         Action::Role(RoleAction::Delete) => ("deleted", Colour::new(0xFF0000)),
-        Action::Role(RoleAction::Update) => {
-            // ignore channel updates made by bots
-            if let Some(user) = &user
-                && user.bot
-            {
-                return None;
-            }
-            ("updated", Colour::new(0xFFAA00))
-        }
+        Action::Role(RoleAction::Update) => ("updated", Colour::new(0xFFAA00)),
         a => {
             log::error!(
                 "Invalid action passed to channel message builder: {}",
@@ -68,9 +60,10 @@ pub async fn build_role_message(
 fn build_role_change_line(change: &Change) -> Option<String> {
     Some(match change {
         Change::Name { old, new } => format_string_change!("Name", old, new),
-        Change::Hoist { old, new } => format_boolean_change!("Show sepatately", old, new),
+        Change::Hoist { old, new } => format_boolean_change!("Hoisted", old, new),
         Change::Mentionable { old, new } => format_boolean_change!("Pingable", old, new),
         Change::UnicodeEmoji { old, new } => format_string_change!("icon", old, new),
+        Change::Color { old, new } => format_numeric_change_operation!("Colour", "", old, new, |c| format!("#{:06X}", c)),
 
         Change::Permissions { old, new }  =>  match (old, new) {
             (Some(old), Some(new)) => return format_permission_change(old, new),
@@ -78,8 +71,7 @@ fn build_role_change_line(change: &Change) -> Option<String> {
             (Some(old), None) => return format_permission(old),
             _ => return None
         },
-        
-        Change::Color { old, new } => return None,
+
         Change::Position { old, new } => match (old, new) {
             (Some(old), Some(new)) => if new > old {
                 "- **Rank changed:** 🠉"

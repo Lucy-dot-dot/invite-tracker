@@ -19,30 +19,6 @@ pub async fn send_message(message: CreateMessage, ctx: &Context, channel_id: Cha
     }
 }
 
-pub fn build_author_info(
-    user: &Option<User>,
-    user_id: Option<UserId>,
-) -> (String, CreateEmbedAuthor) {
-    match (user, user_id) {
-        (Some(user), _) => {
-            let msg = format!("**Message by** <@{}>({})", user.id, user.name);
-            let avatar_url = user.avatar_url().unwrap_or_else(|| user.face());
-            let author = CreateEmbedAuthor::new(&user.name).icon_url(avatar_url);
-            (msg, author)
-        }
-        (None, Some(id)) => {
-            let msg = format!("**Message by** <@{id}>");
-            let author = CreateEmbedAuthor::new(id.to_string());
-            (msg, author)
-        }
-        (None, None) => {
-            let msg = "**Unknown message** ".to_string();
-            let author = CreateEmbedAuthor::new("unknown");
-            (msg, author)
-        }
-    }
-}
-
 pub fn build_embed_author(user: &Option<User>, user_id: UserId) -> CreateEmbedAuthor {
     match (user, user_id) {
         (Some(user), _) => {
@@ -51,6 +27,15 @@ pub fn build_embed_author(user: &Option<User>, user_id: UserId) -> CreateEmbedAu
         }
         (None, user_id) => CreateEmbedAuthor::new(user_id.to_string()),
     }
+}
+
+pub fn build_embed_author_admin(user: &Option<User>, user_id: UserId, admin:&Option<User>) -> CreateEmbedAuthor {
+    if let Some(user) = user && let Some(admin) = admin {
+            let avatar_url = user.avatar_url().unwrap_or_else(|| user.face());
+            let embed_author = format!("{} 🠞 {}", &admin.name, &user.name);
+            return CreateEmbedAuthor::new(embed_author).icon_url(avatar_url);
+    }
+    return build_embed_author(user, user_id);
 }
 
 pub fn format_user(user: &Option<User>, user_id: UserId) -> String {

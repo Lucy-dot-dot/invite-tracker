@@ -1,14 +1,32 @@
 use serenity::all::{
-    Channel, ChannelId, Colour, CreateEmbed, CreateMessage, GuildId, MessageId, User, UserId,
+    Channel, ChannelId, Colour, CreateEmbed, CreateEmbedAuthor, CreateMessage, GuildId, MessageId, User, UserId,
 };
 use time::OffsetDateTime;
 
 use crate::messages::format_time::format_time_diff;
-use crate::messages::utils::{build_author_info, format_channel, format_user};
+use crate::messages::utils::{build_embed_author, build_embed_author_admin, format_channel, format_user};
+
+
+fn build_message_info(
+    user: &Option<User>,
+    user_id: Option<UserId>,
+) -> String {
+    match (user, user_id) {
+        (Some(user), _) => {
+            format!("**Message by** <@{}>({})", user.id, user.name)
+        }
+        (None, Some(id)) => {
+            format!("**Message by** <@{id}>")
+        }
+        (None, None) => {
+            "**Unknown message** ".to_string()
+        }
+    }
+}
 
 pub fn build_edited_message(
     user: Option<User>,
-    user_id: Option<UserId>,
+    user_id: UserId,
     channel: Option<Channel>,
     channel_id: ChannelId,
     guild: GuildId,
@@ -18,7 +36,8 @@ pub fn build_edited_message(
 ) -> CreateMessage {
     let created = message_id.created_at().unix_timestamp();
 
-    let (message_author, embed_author) = build_author_info(&user, user_id);
+    let message_author = build_message_info(&user, Some(user_id));
+    let embed_author = build_embed_author(&user, user_id);
 
     let formatted_channel = format_channel(channel, channel_id);
 
@@ -61,7 +80,13 @@ pub fn build_deleted_message(
 ) -> CreateMessage {
     let created = message_id.created_at().unix_timestamp();
 
-    let (message_author, embed_author) = build_author_info(&user, user_id);
+    let message_author = build_message_info(&user, user_id);
+
+    let embed_author = if let Some(user_id) = user_id  {
+        build_embed_author_admin(&user, user_id, &deleter)
+    } else {
+        CreateEmbedAuthor::new("unknown author")
+    };
 
     let deleter_info = if let Some(deleter_id) = deleter_id {
         format!("\n**Deleted by** {}", format_user(&deleter, deleter_id))

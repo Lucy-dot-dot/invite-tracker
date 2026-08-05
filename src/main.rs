@@ -318,7 +318,7 @@ impl EventHandler for Handler {
             None
         };
 
-        let msg = messages::invites::build_leave_message(&user, last_join, admin, entry);
+        let msg = messages::invites::build_leave_message(user, last_join, admin, entry);
         send_message(msg, &ctx, self.config.join_leave_channel).await;
     }
 
@@ -456,7 +456,7 @@ impl EventHandler for Handler {
 
             let msg = messages::messages::build_edited_message(
                 event.author,
-                Some(UserId::new(user_id as u64)),
+                UserId::new(user_id as u64),
                 event.channel_id.to_channel(&ctx).await.ok(),
                 event.channel_id,
                 guild,

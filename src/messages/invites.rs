@@ -7,7 +7,7 @@ use time::OffsetDateTime;
 
 use crate::datastructures::UsedInvite;
 use crate::messages::format_time::format_time_diff;
-use crate::messages::utils::format_user;
+use crate::messages::utils::{build_embed_author_admin, format_user};
 
 pub fn build_join_message(
     new_member: &Member,
@@ -115,7 +115,7 @@ pub fn build_join_message(
 }
 
 pub fn build_leave_message(
-    user: &User,
+    user: User,
     last_join: Option<i64>,
     admin: Option<User>,
     entry: Option<AuditLogEntry>,
@@ -171,7 +171,8 @@ pub fn build_leave_message(
     );
 
     let avatar_url = user.face();
-    let embed_author = CreateEmbedAuthor::new(&user.name).icon_url(&avatar_url);
+    let user_id = user.id;
+    let embed_author = build_embed_author_admin(&Some(user), user_id, &admin);
 
     let embed = CreateEmbed::new()
         .author(embed_author)

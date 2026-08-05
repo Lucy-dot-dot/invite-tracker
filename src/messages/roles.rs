@@ -1,8 +1,12 @@
 use serenity::all::{
-    AuditLogEntry, Change, Colour, Context, CreateEmbed, CreateMessage, GuildId, Permissions, RoleAction, RoleId, User, audit_log::Action,
+    AuditLogEntry, Change, Colour, Context, CreateEmbed, CreateMessage, GuildId, Permissions,
+    RoleAction, RoleId, User, audit_log::Action,
 };
 
-use crate::{format_boolean_change, format_numeric_change_operation, format_string_change, messages::utils::{build_embed_author, format_role, format_user}};
+use crate::{
+    format_boolean_change, format_numeric_change_operation, format_string_change,
+    messages::utils::{build_embed_author, format_role, format_user},
+};
 
 pub async fn build_role_message(
     entry: AuditLogEntry,
@@ -63,25 +67,29 @@ fn build_role_change_line(change: &Change) -> Option<String> {
         Change::Hoist { old, new } => format_boolean_change!("Hoisted", old, new),
         Change::Mentionable { old, new } => format_boolean_change!("Pingable", old, new),
         Change::UnicodeEmoji { old, new } => format_string_change!("icon", old, new),
-        Change::Color { old, new } => format_numeric_change_operation!("Colour", "", old, new, |c| format!("#{:06X}", c)),
+        Change::Color { old, new } => {
+            format_numeric_change_operation!("Colour", "", old, new, |c| format!("#{:06X}", c))
+        }
 
-        Change::Permissions { old, new }  =>  match (old, new) {
+        Change::Permissions { old, new } => match (old, new) {
             (Some(old), Some(new)) => return format_permission_change(old, new),
             (None, Some(new)) => return format_permission(new),
             (Some(old), None) => return format_permission(old),
-            _ => return None
+            _ => return None,
         },
 
         Change::Position { old, new } => match (old, new) {
-            (Some(old), Some(new)) => if new > old {
-                "- **Rank changed:** 🠉"
-            } else {
-                "- **Rank changed:** 🠋"
-            },
-            (None, Some(new)) => "- **Rank changed**",
-            _ => return None
-
-        }.to_string(),
+            (Some(old), Some(new)) => {
+                if new > old {
+                    "- **Rank changed:** 🠉"
+                } else {
+                    "- **Rank changed:** 🠋"
+                }
+            }
+            (None, Some(_)) => "- **Rank changed**",
+            _ => return None,
+        }
+        .to_string(),
 
         _ => return None,
     })
@@ -95,18 +103,17 @@ fn format_permission_change(old: &Permissions, new: &Permissions) -> Option<Stri
 
     result.push("- **Permissions:**".to_string());
 
-    for perm in perms_difference.iter(){
-        result.push(format!("  - {perm}: {}", if perm.intersects(new) {
-            "✅"
-        } else {
-            "`╱`"
-        }));
+    for perm in perms_difference.iter() {
+        result.push(format!(
+            "  - {perm}: {}",
+            if perm.intersects(new) { "✅" } else { "`╱`" }
+        ));
     }
 
-    if result.is_empty(){
+    if result.is_empty() {
         return None;
     }
-    
+
     Some(result.join("\n"))
 }
 
@@ -115,13 +122,13 @@ fn format_permission(perm: &Permissions) -> Option<String> {
 
     result.push("- **Permissions:**".to_string());
 
-    for perm in perm.iter(){
+    for perm in perm.iter() {
         result.push(format!("  - {perm}: ✅"));
     }
 
-    if result.is_empty(){
+    if result.is_empty() {
         return None;
     }
-    
+
     Some(result.join("\n"))
 }

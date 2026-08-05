@@ -89,7 +89,7 @@ macro_rules! format_numeric_change {
                 format!("- **{NAME}:** `{new}{UNIT}`").into()
             }
             (Some(old), None) | (Some(old), Some(0)) => {
-                format!("- **{NAME} disabled:** *was* `{old}{UNIT}`").into()
+                format!("- **{NAME}:** *was* `{old}{UNIT}`").into()
             }
             (Some(old), Some(new)) => format!("- **{NAME}:** `{old}` ➜ `{new}{UNIT}`",).into(),
             _ => return None,
@@ -113,7 +113,7 @@ macro_rules! format_numeric_change_operation {
                 format!("- **{NAME}:** `{}{UNIT}`", op(new)).into()
             }
             (Some(old), None) | (Some(old), Some(0)) => {
-                format!("- **{NAME} disabled:** *was* `{}{UNIT}`", op(old)).into()
+                format!("- **{NAME}:** *was* `{}{UNIT}`", op(old)).into()
             }
             (Some(old), Some(new)) => {
                 format!("- **{NAME}:** `{}` ➜ `{}{UNIT}`", op(old), op(new)).into()

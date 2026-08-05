@@ -529,8 +529,7 @@ impl EventHandler for Handler {
                 let audit_user_id = UserId::new(audit_user_id.get());
                 user_id = Some(audit_user_id);
                 user = audit_user_id.to_user(&ctx).await.ok();
-            }
-;
+            };
             (Some(deleter_id), deleter_user)
         } else {
             // Ignore bots only if the message is deleted by the bot itself

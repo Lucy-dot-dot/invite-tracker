@@ -29,13 +29,24 @@ pub fn build_embed_author(user: &Option<User>, user_id: UserId) -> CreateEmbedAu
     }
 }
 
-pub fn build_embed_author_admin(user: &Option<User>, user_id: UserId, admin:&Option<User>) -> CreateEmbedAuthor {
-    if let Some(user) = user && let Some(admin) = admin {
+pub fn build_embed_author_admin(
+    user: &Option<User>,
+    user_id: UserId,
+    admin: &Option<User>,
+) -> CreateEmbedAuthor {
+    match (user, admin) {
+        (Some(user), Some(admin)) => {
             let avatar_url = user.avatar_url().unwrap_or_else(|| user.face());
             let embed_author = format!("{} 🠞 {}", &admin.name, &user.name);
             return CreateEmbedAuthor::new(embed_author).icon_url(avatar_url);
+        }
+        (None, Some(admin)) => {
+            let avatar_url = admin.avatar_url().unwrap_or_else(|| admin.face());
+            let embed_author = format!("{} 🠞 {}", &admin.name, user_id);
+            CreateEmbedAuthor::new(embed_author).icon_url(avatar_url)
+        }
+        _ => build_embed_author(user, user_id),
     }
-    return build_embed_author(user, user_id);
 }
 
 pub fn format_user(user: &Option<User>, user_id: UserId) -> String {

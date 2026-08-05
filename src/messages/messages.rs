@@ -1,16 +1,15 @@
 use serenity::all::{
-    Channel, ChannelId, Colour, CreateEmbed, CreateEmbedAuthor, CreateMessage, GuildId, MessageId, User, UserId,
+    Channel, ChannelId, Colour, CreateEmbed, CreateEmbedAuthor, CreateMessage, GuildId, MessageId,
+    User, UserId,
 };
 use time::OffsetDateTime;
 
 use crate::messages::format_time::format_time_diff;
-use crate::messages::utils::{build_embed_author, build_embed_author_admin, format_channel, format_user};
+use crate::messages::utils::{
+    build_embed_author, build_embed_author_admin, format_channel, format_user,
+};
 
-
-fn build_message_info(
-    user: &Option<User>,
-    user_id: Option<UserId>,
-) -> String {
+fn build_message_info(user: &Option<User>, user_id: Option<UserId>) -> String {
     match (user, user_id) {
         (Some(user), _) => {
             format!("**Message by** <@{}>({})", user.id, user.name)
@@ -18,9 +17,7 @@ fn build_message_info(
         (None, Some(id)) => {
             format!("**Message by** <@{id}>")
         }
-        (None, None) => {
-            "**Unknown message** ".to_string()
-        }
+        (None, None) => "**Unknown message** ".to_string(),
     }
 }
 
@@ -82,7 +79,7 @@ pub fn build_deleted_message(
 
     let message_author = build_message_info(&user, user_id);
 
-    let embed_author = if let Some(user_id) = user_id  {
+    let embed_author = if let Some(user_id) = user_id {
         build_embed_author_admin(&user, user_id, &deleter)
     } else {
         CreateEmbedAuthor::new("unknown author")

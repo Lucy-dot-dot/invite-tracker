@@ -113,10 +113,10 @@ pub async fn build_permission_override_message(
 
     let (action, colour) = match entry.action {
         Action::ChannelOverwrite(ChannelOverwriteAction::Create) => {
-            ("created", Colour::new(0xFFAA00))
+            ("created", Colour::new(0x00FF00))
         }
         Action::ChannelOverwrite(ChannelOverwriteAction::Delete) => {
-            ("deleted", Colour::new(0xFFAA00))
+            ("deleted", Colour::new(0xFF0000))
         }
         Action::ChannelOverwrite(ChannelOverwriteAction::Update) => {
             ("updated", Colour::new(0xFFAA00))

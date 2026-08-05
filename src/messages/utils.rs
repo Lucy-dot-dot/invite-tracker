@@ -84,6 +84,7 @@ macro_rules! format_numeric_change {
 
         match (old, new) {
             (None, Some(0)) => return None,
+            (Some(0), None) => return None,
             (None, Some(new)) | (Some(0), Some(new)) => {
                 format!("- **{NAME}:** `{new}{UNIT}`").into()
             }
@@ -107,6 +108,7 @@ macro_rules! format_numeric_change_operation {
 
         match (old, new) {
             (None, Some(0)) => return None,
+            (Some(0), None) => return None,
             (None, Some(new)) | (Some(0), Some(new)) => {
                 format!("- **{NAME}:** `{}{UNIT}`", op(new)).into()
             }

@@ -134,19 +134,14 @@ pub async fn build_bot_message(
 ) -> Option<CreateMessage> {
     let user_str = format_user(&user, entry.user_id);
 
-    let (bot_str, avatar_url) = if let Some(target_id) = entry.target_id {
-        let bot_id = UserId::new(target_id.get());
-        let bot = bot_id.to_user(&ctx).await.ok();
-
-        let avatar_url = if let Some(bot) = &bot {
-            Some(bot.avatar_url().unwrap_or_else(|| bot.face()))
-        } else {
-            None
-        };
-        (format_user(&bot, bot_id), avatar_url)
-    } else {
-        ("unknown bot".to_string(), None)
+    let Some(target_id) = entry.target_id else {
+        return None;
     };
+
+    let bot_id = UserId::new(target_id.get());
+    let bot = bot_id.to_user(&ctx).await.ok();
+
+    let bot_str = format_user(&bot, bot_id);
 
     let embed_author = build_embed_author(&user, entry.user_id);
 
@@ -158,9 +153,45 @@ pub async fn build_bot_message(
         .color(Colour::new(0x00FF00))
         .description(message);
 
-    if let Some(avatar_url) = avatar_url {
+    if let Some(bot) = &bot {
+        let avatar_url = bot.avatar_url().unwrap_or_else(|| bot.face());
         embed = embed.thumbnail(avatar_url);
     }
+
+    Some(CreateMessage::new().embed(embed))
+}
+
+pub async fn build_unban_message(
+    entry: AuditLogEntry,
+    admin: Option<User>,
+    ctx: &Context,
+) -> Option<CreateMessage> {
+    let admin_str = format_user(&admin, entry.user_id);
+    let Some(target_id) = entry.target_id else {
+        return None;
+    };
+
+    let user_id = UserId::new(target_id.get());
+    let user = user_id.to_user(&ctx).await.ok();
+    let user_str = format_user(&user, user_id);
+
+    let embed_author = build_embed_author_admin(&user, user_id, &admin);
+
+    let reason = if let Some(reason) = entry.reason
+        && !reason.is_empty()
+    {
+        reason
+    } else {
+        "*No reason stated".to_string()
+    };
+
+    let message = format!("{admin_str} **unbanned** {user_str}\n\n**- Reason:** {reason}");
+
+    let embed = CreateEmbed::new()
+        .title("MEMBER UNBANNED")
+        .author(embed_author)
+        .color(Colour::new(0x00FF00))
+        .description(message);
 
     Some(CreateMessage::new().embed(embed))
 }

@@ -660,12 +660,16 @@ impl EventHandler for Handler {
             Action::Member(MemberAction::Prune) => {
                 messages::member::build_purge_message(entry, user)
             }
-            Action::Member(MemberAction::BanRemove) => return,
+            Action::Member(MemberAction::BanRemove) => {
+                messages::member::build_unban_message(entry, user, &ctx).await
+            }
             Action::Member(MemberAction::Update) => return,
             Action::Member(MemberAction::RoleUpdate) => {
                 messages::member::build_role_change_message(entry, user, &ctx).await
             }
-            Action::Member(MemberAction::BotAdd) => messages::member::build_bot_message(entry, user, &ctx).await,
+            Action::Member(MemberAction::BotAdd) => {
+                messages::member::build_bot_message(entry, user, &ctx).await
+            }
             Action::Thread(_) => return,
             Action::Invite(_) => return,
             Action::Webhook(_) => return,

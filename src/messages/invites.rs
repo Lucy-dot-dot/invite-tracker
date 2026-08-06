@@ -28,7 +28,7 @@ pub fn build_join_message(
     let mut suspicions: Vec<String> = Vec::new();
     if account_age < NEW_ACCOUNT_THRESHOLD_SECS {
         suspicions.push(format!(
-            "Account younger than 48h ({})",
+            "- Account younger than 48h ({})",
             format_time_diff(account_age as u64, 2)
         ));
     }
@@ -36,16 +36,21 @@ pub fn build_join_message(
         if until.unix_timestamp() > now {
             let until_ts = until.unix_timestamp();
             suspicions.push(format!(
-                "Unusual DM activity flagged (until <t:{until_ts}:R>)"
+                "- Unusual DM activity flagged (until <t:{until_ts}:R>)"
             ));
         }
     }
+
+    if new_member.user.bot {
+        suspicions.push("- User is a bot 🤖".to_string());
+    }
+
     if new_member.user.avatar.is_none() {
-        suspicions.push("No avatar set".to_string());
+        suspicions.push("- No avatar set".to_string());
     }
 
     if new_member.user.global_name.is_none() {
-        suspicions.push("No display name set".to_string());
+        suspicions.push("- No display name set".to_string());
     }
     let is_suspicious = !suspicions.is_empty();
 

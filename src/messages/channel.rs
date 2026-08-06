@@ -1,13 +1,13 @@
 use serenity::all::{
     AuditLogEntry, Change, ChannelAction, ChannelFlags, ChannelId, ChannelOverwriteAction,
-    ChannelType, Colour, Context, CreateEmbed, CreateMessage, EntityType, GuildId,
-    PermissionOverwrite, PermissionOverwriteType, Permissions, User, UserId, audit_log::Action,
+    ChannelType, Colour, Context, CreateEmbed, CreateMessage, EntityType, PermissionOverwrite,
+    PermissionOverwriteType, Permissions, User, UserId, audit_log::Action,
 };
 
 use crate::{
     format_boolean_change, format_numeric_change, format_numeric_change_operation,
     format_string_change,
-    messages::utils::{build_embed_author, format_channel, format_role, format_user},
+    messages::utils::{build_embed_author, format_channel, format_user},
 };
 
 pub async fn build_channel_message(
@@ -130,36 +130,13 @@ pub async fn build_permission_override_message(
         }
     };
 
-    let allow = changes
-        .iter()
-        .find(|&x| matches!(x, Change::Allow { old: _, new: _ }));
-    let deny = changes
-        .iter()
-        .find(|&x| matches!(x, Change::Deny { old: _, new: _ }));
+    let (new_allow, new_deny, old_allow, old_deny) = unwrap_changes(&changes);
 
-    let permission_changes_str = match (allow, deny) {
-        (
-            Some(Change::Allow {
-                old: old_allow,
-                new: new_allow,
-            }),
-            Some(Change::Deny {
-                old: old_deny,
-                new: new_deny,
-            }),
-        ) => match (old_allow, new_allow, old_deny, new_deny) {
-            (Some(old_allow), Some(new_allow), Some(old_deny), Some(new_deny)) => {
-                format_permission_override_change(*old_allow, *new_allow, *old_deny, *new_deny)
-            }
-            (None, Some(new_allow), None, Some(new_deny)) => {
-                format_permission_override(*new_allow, *new_deny)
-            }
-            (Some(old_allow), None, Some(old_deny), None) => {
-                format_permission_override(*old_allow, *old_deny)
-            }
-            _ => "ERROR WHILE PROCESSING PERMISSION CHANGES".to_string(),
-        },
-        _ => "ERROR WHILE PROCESSING PERMISSION CHANGES".to_string(),
+    let permission_changes_str = match (old_allow, old_deny) {
+        (Some(old_allow), Some(old_deny)) => {
+            format_permission_override_change(old_allow, new_allow, old_deny, new_deny)
+        }
+        _ => format_permission_override(new_allow, new_deny),
     };
 
     let embed_author = build_embed_author(&user, entry.user_id);
@@ -342,4 +319,52 @@ fn perm_to_icon(allow: Permissions, deny: Permissions, perm: Permissions) -> &'s
         return "❌";
     }
     "`╱`"
+}
+
+fn unwrap_changes(
+    changes: &[Change],
+) -> (
+    Permissions,
+    Permissions,
+    Option<Permissions>,
+    Option<Permissions>,
+) {
+    let allow = changes.iter().find_map(|c| {
+        if let Change::Allow { old, new } = c {
+            Some((old, new))
+        } else {
+            None
+        }
+    });
+
+    let deny = changes.iter().find_map(|c| {
+        if let Change::Deny { old, new } = c {
+            Some((old, new))
+        } else {
+            None
+        }
+    });
+
+    // If Allow has both old and new, Deny does too (per your assumption).
+    let is_change = allow.is_some_and(|(old, new)| old.is_some() && new.is_some());
+
+    if is_change {
+        let (allow_old, allow_new) = allow.unwrap();
+        let (deny_old, deny_new) = deny.unwrap_or((&None, &None));
+
+        (
+            allow_new.unwrap_or_else(Permissions::empty),
+            deny_new.unwrap_or_else(Permissions::empty),
+            Some(allow_old.unwrap_or_else(Permissions::empty)),
+            Some(deny_old.unwrap_or_else(Permissions::empty)),
+        )
+    } else {
+        let (allow_old, allow_new) = allow.unwrap_or((&None, &None));
+        let (deny_old, deny_new) = deny.unwrap_or((&None, &None));
+
+        let allow = allow_new.or(*allow_old).unwrap_or_else(Permissions::empty);
+        let deny = deny_new.or(*deny_old).unwrap_or_else(Permissions::empty);
+
+        (allow, deny, None, None)
+    }
 }

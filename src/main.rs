@@ -19,7 +19,7 @@ use serenity::Client;
 use serenity::all::audit_log::Action;
 use serenity::all::{
     AuditLogEntry, ChannelId, Context, Guild, GuildId, InviteCreateEvent, InviteDeleteEvent,
-    Member, Message, MessageId, MessageUpdateEvent, Ready, RichInvite, User, UserId,
+    Member, MemberAction, Message, MessageId, MessageUpdateEvent, Ready, RichInvite, User, UserId,
 };
 use serenity::futures::StreamExt;
 use serenity::prelude::{EventHandler, GatewayIntents};
@@ -657,8 +657,20 @@ impl EventHandler for Handler {
             Action::Role(_) => {
                 messages::roles::build_role_message(entry, user, guild_id, &ctx).await
             }
+            Action::Member(MemberAction::Prune) => {
+                messages::member::build_purge_message(entry, user)
+            }
+            Action::Member(MemberAction::BanRemove) => {
+                messages::member::build_unban_message(entry, user, &ctx).await
+            }
+            Action::Member(MemberAction::Update) => return,
+            Action::Member(MemberAction::RoleUpdate) => {
+                messages::member::build_role_change_message(entry, user, &ctx).await
+            }
+            Action::Member(MemberAction::BotAdd) => {
+                messages::member::build_bot_message(entry, user, &ctx).await
+            }
             Action::Thread(_) => return,
-            Action::Member(_) => return,
             Action::Invite(_) => return,
             Action::Webhook(_) => return,
             Action::Emoji(_) => return,

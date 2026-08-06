@@ -180,12 +180,12 @@ pub async fn build_unban_message(
     let reason = if let Some(reason) = entry.reason
         && !reason.is_empty()
     {
-        reason
+        reason.trim().to_string()
     } else {
         "*No reason stated".to_string()
     };
 
-    let message = format!("{admin_str} **unbanned** {user_str}\n\n**- Reason:** {reason}");
+    let message = format!("{admin_str} **unbanned** {user_str}\n**Reason:** {reason}");
 
     let embed = CreateEmbed::new()
         .title("MEMBER UNBANNED")

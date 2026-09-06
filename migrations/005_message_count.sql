@@ -1,0 +1,1 @@
+CREATE INDEX message_per_user_idx ON messages (user_id);

@@ -1,5 +1,7 @@
+use std::str::FromStr;
+
 use serde::Deserialize;
-use serenity::all::ChannelId;
+use serenity::all::{ChannelId, Token};
 
 #[derive(Deserialize, Clone, Debug)]
 pub struct Config {
@@ -19,12 +21,12 @@ pub struct Config {
 }
 
 impl Config {
-    pub fn resolve_token(&self) -> String {
+    pub fn resolve_token(&self) -> Token {
         let trimmed = self.token.trim();
         if !trimmed.is_empty() {
-            return trimmed.to_string();
+            return Token::from_str(trimmed).unwrap();
         }
-        std::env::var("DISCORD_TOKEN")
+        Token::from_env("DISCORD_TOKEN")
             .expect("No token in config.toml and the DISCORD_TOKEN env var is not set")
     }
 

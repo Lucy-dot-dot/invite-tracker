@@ -1,12 +1,13 @@
 use std::error::Error;
 
 use serenity::all::{
-    Channel, ChannelId, Colour, CreateAttachment, CreateEmbed, CreateEmbedAuthor, CreateMessage,
+    Channel, CreateAttachment, CreateEmbed, CreateEmbedAuthor, CreateMessage, GenericChannelId,
     GuildId, MessageId, User, UserId,
 };
 use serenity::futures::future::join_all;
 use time::OffsetDateTime;
 
+use crate::messages::colours::*;
 use crate::messages::format_time::format_time_diff;
 use crate::messages::utils::{
     build_embed_author, build_embed_author_admin, format_channel, format_user,
@@ -28,12 +29,12 @@ pub fn build_edited_message(
     user: Option<User>,
     user_id: UserId,
     channel: Option<Channel>,
-    channel_id: ChannelId,
+    channel_id: GenericChannelId,
     guild: GuildId,
     message_id: MessageId,
     content: String,
     edits: i32,
-) -> CreateMessage {
+) -> CreateMessage<'static> {
     let created = message_id.created_at().unix_timestamp();
 
     let message_author = build_message_info(&user, Some(user_id));
@@ -59,7 +60,7 @@ pub fn build_edited_message(
 
     let embed = CreateEmbed::new()
         .author(embed_author)
-        .color(Colour::new(0xFFAA00))
+        .color(EDIT_COLOUR)
         .description(embed_description);
 
     CreateMessage::new().embed(embed)
@@ -71,14 +72,14 @@ pub async fn build_deleted_message(
     deleter: Option<User>,
     deleter_id: Option<UserId>,
     channel: Option<Channel>,
-    channel_id: ChannelId,
+    channel_id: GenericChannelId,
     guild: GuildId,
     message_id: MessageId,
     content: Option<String>,
     attachments: Option<String>,
     stickers: Option<String>,
     edits: i32,
-) -> CreateMessage {
+) -> CreateMessage<'static> {
     let created = message_id.created_at().unix_timestamp();
 
     let message_author = build_message_info(&user, user_id);
@@ -122,10 +123,15 @@ pub async fn build_deleted_message(
          -# [Jump to surrounding]({message_link})"
     );
 
-    let mut embed = CreateEmbed::new()
+    let mut embed: CreateEmbed<'_> = CreateEmbed::new()
         .author(embed_author)
-        .color(Colour::new(0xFF0000))
+        .color(NEGATIVE_COLOUR)
         .description(embed_description);
+
+    /*// if an admin deletes the message, the pfp will be the admin's one
+    if deleter_id.is_some() && let Some(user) = user {
+        embed = embed.thumbnail(user.face(), None);
+    }*/
 
     let mut message = reupload_attachements(attachments).await;
 
@@ -134,14 +140,14 @@ pub async fn build_deleted_message(
 
         if !attachments.is_empty() {
             // First attachment goes in the main embed
-            embed = embed.thumbnail(attachments[0]);
+            embed = embed.image(attachments[0].to_string(), None);
             message = message.embed(embed);
 
             // Any additional attachments get their own embeds
             for attachment in attachments.iter().skip(1) {
                 let extra_embed = CreateEmbed::new()
-                    .thumbnail(*attachment)
-                    .color(Colour::new(0xFF0000));
+                    .image((*attachment).to_string(), None)
+                    .color(NEGATIVE_COLOUR);
                 message = message.add_embed(extra_embed);
             }
             return message;
@@ -154,9 +160,9 @@ pub async fn build_deleted_message(
 pub fn build_bulk_delete_message(
     messages: Vec<(UserId, Option<User>, Vec<String>)>,
     channel: Option<Channel>,
-    channel_id: ChannelId,
+    channel_id: GenericChannelId,
     count: usize,
-) -> CreateMessage {
+) -> CreateMessage<'static> {
     let mut content = String::new();
 
     for (user_id, user, user_messages) in messages {
@@ -187,13 +193,13 @@ pub fn build_bulk_delete_message(
 
     let embed = CreateEmbed::new()
         .title("BULK MESSAGE DELETE")
-        .color(Colour::new(0xFF0000))
+        .color(NEGATIVE_COLOUR)
         .description(embed_description);
 
     CreateMessage::new().embed(embed)
 }
 
-async fn reupload_attachements(attachments: Option<String>) -> CreateMessage {
+async fn reupload_attachements(attachments: Option<String>) -> CreateMessage<'static> {
     let mut builder = CreateMessage::new();
 
     let Some(attachments) = attachments else {
@@ -204,7 +210,7 @@ async fn reupload_attachements(attachments: Option<String>) -> CreateMessage {
         let (url, filename) = line.split_once('|').unwrap_or((line, "unknown_attachment"));
 
         match download_single(url).await {
-            Ok(bytes) => Some((bytes, filename)),
+            Ok(bytes) => Some((bytes, filename.to_string())),
             Err(e) => {
                 log::error!("Failed to fetch URL {}: {}", url, e);
                 None

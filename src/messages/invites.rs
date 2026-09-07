@@ -65,13 +65,14 @@ pub fn build_join_message(
 
     let invite_info = match used_invite {
         Some(inv) => format!(
-            "- **Code:** `{code}` ({n_uses} uses)\n\
+            "- **Code:** `{code}` ({n_uses} use{s})\n\
              - **By** <@{inviter_id}> ({inviter_name}) <t:{invite_created}:R>\n",
             code = inv.code,
             inviter_id = inv.inviter_id,
             inviter_name = inv.inviter_name,
             invite_created = inv.created_at,
-            n_uses = inv.uses
+            n_uses = inv.uses,
+            s = if inv.uses == 1 { "" } else { "s" }
         ),
         None => "*Could not determine which invite was used.*".to_string(),
     };
@@ -172,12 +173,9 @@ pub fn build_leave_message(
         String::new()
     };
 
-    let leave_count = if let Some(join_amount) = join_amount
-        && join_amount > 1
-    {
-        let leave_amount = join_amount - 1;
+    let leave_count = if let Some(join_amount) = join_amount {
         format!(
-            "\n**Previously left** {leave_amount} **time{}**",
+            "\n**Previously left** {join_amount} **time{}**",
             if join_amount > 1 { "s" } else { "" }
         )
     } else {

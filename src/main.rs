@@ -17,7 +17,8 @@ use log4rs::encode::pattern::PatternEncoder;
 use serenity::Client;
 use serenity::all::audit_log::Action;
 use serenity::all::{
-    ChannelId, Context, CreateMessage, FullEvent, GuildId, Invite, MemberAction, Message, UserId,
+    AttachmentFlags, ChannelId, Context, CreateMessage, FullEvent, GuildId, Invite, MemberAction,
+    Message, UserId,
 };
 use serenity::futures::StreamExt;
 use serenity::prelude::{EventHandler, GatewayIntents};
@@ -118,7 +119,20 @@ impl Handler {
             .attachments
             .iter()
             .filter(|attachement| attachement.size < self.config.max_upload_size)
-            .map(|attachment| format!("{}|{}", attachment.proxy_url, attachment.filename))
+            .map(|attachment| {
+                format!(
+                    "{}|{}{}",
+                    attachment.proxy_url,
+                    if let Some(flags) = attachment.flags
+                        && flags.intersects(AttachmentFlags::IS_SPOILER)
+                    {
+                        "SPOILER_"
+                    } else {
+                        ""
+                    },
+                    attachment.filename
+                )
+            })
             .collect();
 
         if urls.is_empty() {

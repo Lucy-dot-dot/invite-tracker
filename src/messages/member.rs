@@ -380,28 +380,31 @@ fn build_username_change(
         .title("MEMBER NICKNAME UPDATE")
         .color(EDIT_COLOUR);
 
-    let globalname = user
-        .as_ref()
-        .map(|user| user.global_name.as_ref().unwrap_or(&user.name));
+    if let Some(user) = user {
+        let globalname = user.global_name.as_ref().unwrap_or(&user.name).as_str();
+        let mut shows_globalname = false;
 
-    // only show globalname if we are not showing it later
-    if old.is_some()
-        && new.is_some()
-        && let Some(globalname) = globalname
-    {
-        embed = embed.field("Global name:", globalname.to_string(), false);
-    }
+        if let Some(old) = old
+            && old.as_str() != globalname
+        {
+            embed = embed.field("Old:", old.to_string(), true);
+        } else {
+            shows_globalname = true;
+            embed = embed.field("Old (Globalname):", globalname.to_string(), true);
+        }
 
-    if let Some(old) = old {
-        embed = embed.field("Old:", old.to_string(), true);
-    } else if let Some(globalname) = globalname {
-        embed = embed.field("Old (Globalname):", globalname.to_string(), true);
-    }
+        if let Some(new) = new
+            && new.as_str() != globalname
+        {
+            embed = embed.field("New:", new.to_string(), true);
+        } else {
+            shows_globalname = true;
+            embed = embed.field("New (Globalname):", globalname.to_string(), true);
+        }
 
-    if let Some(new) = new {
-        embed = embed.field("New:", new.to_string(), true);
-    } else if let Some(globalname) = globalname {
-        embed = embed.field("New (Globalname):", globalname.to_string(), true);
+        if !shows_globalname {
+            embed = embed.field("Globalname:", globalname.to_string(), false);
+        }
     }
 
     embed

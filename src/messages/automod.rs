@@ -1,5 +1,5 @@
 use crate::{
-    find_change, format_boolean_change, format_generic_change, format_generic_change_internal,
+    find_change, format_boolean_change, format_generic_change_internal,
     format_string_change,
     messages::{
         colours::*,
@@ -14,7 +14,7 @@ use serenity::{
     },
     small_fixed_array::{FixedArray, FixedString},
 };
-use std::{collections::HashSet, fmt::Write, time::Duration};
+use std::{collections::HashSet, fmt::Write};
 
 pub async fn build_automod_message(
     entry: AuditLogEntry,
@@ -100,7 +100,12 @@ fn build_automod_change_line(change: &Change) -> Option<String> {
                     new_timeout_duration,
                     |c| format!("`{}`", format_time_diff(c, 3))
                 ),
-                format_generic_change_internal!("Alert message", old_message, new_message, |m| m),
+                format_generic_change_internal!(
+                    "Alert message",
+                    old_message,
+                    new_message,
+                    |m| format!("\"{m}\"")
+                ),
             ];
 
             res.into_iter().flatten().collect::<Vec<_>>().join("\n")

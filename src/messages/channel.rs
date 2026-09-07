@@ -285,7 +285,7 @@ fn format_flags(flags: &u64) -> Option<String> {
 }
 
 fn format_access_permission(permission_overrides: &[PermissionOverwrite]) -> String {
-    let mut result = "- **Access:**".to_string();
+    let mut result = "- **Access:**\n".to_string();
 
     for permission in permission_overrides {
         let emoji = perm_to_icon(permission.allow, permission.deny, Permissions::VIEW_CHANNEL);

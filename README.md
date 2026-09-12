@@ -1,15 +1,31 @@
 # Discord Logging Bot
 
-A moderation-focused logging bot that posts detailed, at-a-glance information whenever
-someone joins, leaves, or an invite is created. It is designed to surface the things
-moderators actually act on — who invited them, how old the account is, and whether the
-join looks suspicious — right inside the log channel.
+A moderation-focused logging bot that posts detailed, at-a-glance information whenever something changes in your discord server.
+
+It is desigend to provide as much useful information as possible in the most readbale format.
+
+The bot is essentially divided into 3 main sections, each configuarable with its own channel:
+
+- Invite logging
+  - Members joining/leaving
+  - Members banned/kicked
+  - Invites being created
+- Deleted messages
+  - Edited messages
+  - Deleted messages
+  - Deleted messages **by admin**
+  - Bulk message deletes
+  - Deleted attachements/media
+- Audit logs
+  - Creating/editing/deleting channels, roles, permissions, emojis, stickers and more
+  - Unbanning, timing out, muting, and other member moderation items
+  - Editing automod rules
 
 ---
 
-## What It Logs
+## Invite logging
 
-All messages are sent to a single **log channel** that you choose. Each event is a
+All messages of this category are sent to a single **log channel** that you choose. Each event is a
 colour-coded embed so you can scan the channel quickly:
 
 | Colour    | Meaning           |
@@ -19,97 +35,71 @@ colour-coded embed so you can scan the channel quickly:
 | **Red**   | A member left     |
 | **Blue**  | An invite was created |
 
-### Member Joined
+### Information provided
 
-Posted every time someone joins the server. Includes:
-
-- **A clickable ping of the joining user** — right-click it to ban/kick straight from
-  the log, no need to copy an ID.
-- **Account created** — the exact date/time, plus a relative "how long ago" so you can
-  spot freshly minted accounts at a glance.
-- **Invite info** — the invite code used, who created that invite (as a ping + ID), and
-  when the invite was created.
-- **Display Name** and **Username** as separate fields.
-- **Rejoins** — how many times this person has joined before (not present on a first-ever join).
-- **Last known join** — shown only on rejoins, as a timestamp.
-- The user's avatar as a thumbnail.
-
-If the bot cannot determine which invite was used (rare), it says so explicitly rather
-than guessing.
+- **Member ping** (easy to right click and ban)
+  - username
+  - globalname
+- **Invite used** 
+  - invite code
+  - number of uses
+  - inviter mention and username
+  - invite creation time
+  - *N.B: Invite attribution is best-effort and, while reliable, can fail*
+- **Account creation**
+  - as timestamp of account creation
+  - as age at time of joining
+- **Suspicions** (see next section)
+- **Ban/kick information**
+  - banning admin mention and username
+  - reason
+  - *N.B: Ban/kick information is best-effort*
+- **Number of re-join/leaves**
+  - *This is stored in the database and does not retroactively count rejoins*
+- **Number of messages sent** (on leave)
+  - *This again comes from the database and includes at most 30d*
 
 ### Suspicious Join Detection
 
 When a join trips one or more suspicion signals, the embed turns **amber** and gains a
 **Suspicious** field listing every reason. The signals are:
-
-| Signal | Meaning |
-|--------|---------|
-| Account younger than 48h | Brand-new account — common for alts and raiders. |
-| Unusual DM activity | Discord itself has flagged this account for unusual DM behaviour. |
-| No avatar set | The account still has the default Discord avatar. |
-| No display name set | The account has never set a display name. |
+- **Account younger than 48h**
+- **Unusual DM activity** As flagged by discord, alongside the duration of the infraction.
+- **No avatar set**
+- **No display name set** (globalname matches username)
 
 A single signal is not proof of bad intent (many legitimate new users have no avatar),
 but amber entries are the ones worth reviewing first. Multiple signals stacked on one
 join is a stronger indicator.
 
-### Member Left
-
-Posted when a member leaves or is removed. Includes:
-
-- A ping and ID of the user.
-- **Member since** — when they joined and how long they were a member.
-
-### Invite Created
-
-Posted whenever anyone creates a new invite. Includes:
-
-- A ping of the person who created it.
-- The invite **code**.
-- When it was created.
-- When it expires (or "Never" for permanent invites).
-
----
-
 ## Deleted and edited messages
 
-This bot also logs deleted messages, every message sent is logged in the database. Messages by bots are ignored.
-A separate channel is used for these entries.
+This bot also logs deleted messages, every message sent is logged in the database. Messages by bots, deleted by bots are ignored to avoid spam when using commands.
 
-| Colour    | Meaning           |
-|-----------|-------------------|
-| **Amber** | A a message was edited |
-| **Red**   | A message was delted |
-| **Red**  | Bulk message delete |
+*Deleted message detection is best-effort and may not be 100% reliable* 
 
-### Edited messages
-Edited messages are shown only if the edited message has a Levenshtein distance above a threshold set in the config.
-If data is not present in the database, nothing will be logged.
-
-Data shown:
-- A ping to the person who created the message
-- The channel the message was sent in
-- The previous content of the message
-- The timestamp the message was sent at
-- A link to the message
-- The number of previous edits to the message
-
-
-### Deleted messages
-Deleted messages are also logged. Not all data might be avialble.
-
-Data shown:
-- A ping to the person who created the message (if available)
-- The channel the message was sent in
-- The previous content of the message (if available)
-- The timestamp the message was sent at
-- A link to the message (*showing the surrounding messages*)
-- The amount of time the message was visible for
-- The number of previous edits to the message
-
-Images are also logged. Images are **not** stored permamently, rather then CDN link is simply sent again, this link will expire, but will at least allow you to see what message was deleted temporarily.
-
-Only images are logged, not audio messages, not videos, not files.
+### Information provided
+- **User mention and username**
+- **Deleter admin information** (if available)
+  - *N.B. This is also best effort and may be incorrect or be skipped in rare cases*
+- **Channel**
+  - Channel mention and name (in case of deletion)
+  - Parent channel in case of a thread or channel group
+- **Previous content of the message**
+- **Message sent timestamp**
+  - as timestamp
+  - as time the message was up for (deled message only)
+- **A link to the message**
+  - In deleted messages showing surrounding message
+  - *This may not work reliably on the app, it's a known Discord mobile issue*
+- **Number of previous edits to the message**
+- **Stickers/gifs**
+  - These are added as images in the embed, animation may or may not work depening on the kind of sticker and availability.
+- **Attachments**
+  - Attachments are re-uploaded only at time of deletion. Attachments are *NEVER* stored locally.
+  - A maximum limit for attachment size is configurable.
+  - File names and spoiler status are preserved.
+  - *N.B. This is also best effort and may be only return blank files*
 
 ### Bulk message delete
 Bulk message deletes are handled differently, in order to reudce clutter messages are grouped into one, de-duplicated, and trimmed if too long.
@@ -118,10 +108,22 @@ Data shown:
 - Number of messages deleted
 - Channel where the messages were sent in
 - A ping to the person who sent the message
-- List of trimmed messages.
+- Trimmed list of messages if a available.
 
+## Audit log
 
----
+Plenty of data from the **settings > audit log** is hard to read and often buried under a lot of useless data. This bot aims to show it in the most reable format in a channel so edits to the server are visible at a glance.
+
+There's way too much to list here, but highlights include
+
+Channel permission changes logged as:
+- Permission name ✅ **➜** ❌
+
+Only showing changes, not the whole permissions structure
+
+Stickers and emojis are shown as images whenever possible
+
+Member actions show the affected member's profile picture
 
 ## Setup
 
@@ -138,16 +140,14 @@ Data shown:
 
 ### 2. Invite the bot to your server
 
+*N.B.: The current setup only allows one log channel, if the bot is ivited to multiple servers, logs from all servers are sent to a single one.*
+
 When generating the invite URL / OAuth2 URL, the bot needs these permissions:
 
-- **View Channels** — to access your log channel.
-- **Send Messages** — to post logs.
-- **Embed Links** — logs use rich embeds.
-- **Manage Server** — required for the bot to read the server's invite list, which is
-  how it figures out which invite a new member used.
-
-> **Manage Server** is a sensitive permission. It is required *only* so the bot can read
-> invite usage counts — it does not use it to change any server settings.
+- **View Channels** to access your log channel.
+- **Send Messages** to post logs.
+- **Embed Links** logs use rich embeds.
+- **Manage Server** required for the bot to read the server's invite list, which is how it figures out which invite a new member used. It is also required for audit logs, ban/kick detection and admin message deletion.
 
 ### 3. Configure the bot
 
@@ -177,13 +177,3 @@ docker compose down
 ```
 
 Database data is kept in a named volume (`postgres_data`) and survives restarts.
-
----
-
-## Tips for Moderators
-
-- **Invite attribution is best-effort.** The bot compares invite use counts before and
-  after a join. In rare race conditions (e.g. two simultaneous joins) it may not be able
-  to pin down the exact invite, and will say so honestly.
-- **Single-use invites.** Discord deletes these the moment they are used. The bot handles
-  this case specifically and can still attribute the join in most situations.

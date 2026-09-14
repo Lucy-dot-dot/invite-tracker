@@ -17,8 +17,8 @@ use log4rs::encode::pattern::PatternEncoder;
 use serenity::Client;
 use serenity::all::audit_log::Action;
 use serenity::all::{
-    AttachmentFlags, ChannelId, Context, CreateMessage, FullEvent, GuildId, Invite, MemberAction,
-    Message, UserId,
+    AttachmentFlags, ChannelId, Command, Context, CreateMessage, FullEvent, GuildId, Http, Invite,
+    MemberAction, Message, UserId,
 };
 use serenity::futures::StreamExt;
 use serenity::prelude::{EventHandler, GatewayIntents};
@@ -39,6 +39,45 @@ pub struct Handler {
 }
 
 const MSG_RETRY_INTERVAL: Duration = Duration::from_millis(200);
+
+// This bot registers no application commands, so any commands found on the token
+// are leftovers from a previous application that used the same key.
+async fn clean_stale_global_commands(http: &Http) {
+    match Command::get_global_commands(http).await {
+        Ok(commands) if !commands.is_empty() => {
+            let names: Vec<&str> = commands.iter().map(|c| c.name.as_str()).collect();
+            log::warn!(
+                "Found {} stale global application command(s) attached to this token, removing: {}",
+                commands.len(),
+                names.join(", ")
+            );
+            if let Err(e) = Command::set_global_commands(http, &[]).await {
+                log::error!("Failed to remove stale global application commands: {}", e);
+            }
+        }
+        Ok(_) => {}
+        Err(e) => log::error!("Failed to fetch global application commands: {}", e),
+    }
+}
+
+async fn clean_stale_guild_commands(guild_id: GuildId, http: &Http) {
+    match guild_id.get_commands(http).await {
+        Ok(commands) if !commands.is_empty() => {
+            let names: Vec<&str> = commands.iter().map(|c| c.name.as_str()).collect();
+            log::warn!(
+                "Found {} stale application command(s) in guild {}, removing: {}",
+                commands.len(),
+                guild_id,
+                names.join(", ")
+            );
+            if let Err(e) = guild_id.set_commands(http, &[]).await {
+                log::error!("Failed to remove stale commands in guild {}: {}", guild_id, e);
+            }
+        }
+        Ok(_) => {}
+        Err(e) => log::error!("Failed to fetch application commands for guild {}: {}", guild_id, e),
+    }
+}
 
 pub async fn send_message(message: CreateMessage<'static>, ctx: &Context, channel_id: ChannelId) {
     if let Err(_) = channel_id
@@ -305,6 +344,9 @@ impl EventHandler for Handler {
 
                 // initialize audit logs
                 init_audit_log(guild.id, &ctx, &self.pool).await;
+
+                // remove commands left over from a previous application on this token
+                clean_stale_guild_commands(guild.id, &ctx.http).await;
             }
             FullEvent::GuildMemberAddition { new_member, .. } => {
                 let now = new_member
@@ -888,6 +930,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut client = Client::builder(token, intents)
         .event_handler(Arc::new(handler))
         .await?;
+
+    // remove global commands left over from a previous application on this token
+    clean_stale_global_commands(&client.http).await;
 
     client.start().await?;
     Ok(())

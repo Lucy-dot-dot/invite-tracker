@@ -9,6 +9,7 @@ use crate::datastructures::UsedInvite;
 use crate::messages::colours::*;
 use crate::messages::format_time::format_time_diff;
 use crate::messages::utils::{build_embed_author_admin, format_user, get_reason};
+use crate::plural;
 
 pub fn build_join_message(
     new_member: &Member,
@@ -72,7 +73,7 @@ pub fn build_join_message(
             inviter_name = inv.inviter_name,
             invite_created = inv.created_at,
             n_uses = inv.uses,
-            s = if inv.uses == 1 { "" } else { "s" }
+            s = plural!(inv.uses)
         ),
         None => "*Could not determine which invite was used.*".to_string(),
     };
@@ -173,10 +174,10 @@ pub fn build_leave_message(
         String::new()
     };
 
-    let leave_count = if let Some(join_amount) = join_amount {
+    let leave_count = if let Some(join_amount) = join_amount && join_amount > 0{
         format!(
             "\n**Previously left** {join_amount} **time{}**",
-            if join_amount > 1 { "s" } else { "" }
+            plural!(join_amount)
         )
     } else {
         String::new()

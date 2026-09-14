@@ -202,6 +202,13 @@ macro_rules! find_change {
 }
 
 #[macro_export]
+macro_rules! plural {
+    ($n:expr) => {
+        if $n == 1 { "" } else { "s" }
+    };
+}
+
+#[macro_export]
 macro_rules! unwrap_change {
     ($change:expr, $variant:path) => {
         match $change {

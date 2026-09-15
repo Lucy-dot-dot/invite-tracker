@@ -43,6 +43,16 @@ const MSG_RETRY_INTERVAL: Duration = Duration::from_millis(200);
 // This bot registers no application commands, so any commands found on the token
 // are leftovers from a previous application that used the same key.
 async fn clean_stale_global_commands(http: &Http) {
+    // the application id is normally only cached on Ready; set it here so this
+    // can run before the gateway connects
+    match http.get_current_application_info().await {
+        Ok(info) => http.set_application_id(info.id),
+        Err(e) => {
+            log::error!("Failed to fetch application info: {}", e);
+            return;
+        }
+    }
+
     match Command::get_global_commands(http).await {
         Ok(commands) if !commands.is_empty() => {
             let names: Vec<&str> = commands.iter().map(|c| c.name.as_str()).collect();

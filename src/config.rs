@@ -10,6 +10,7 @@ pub struct Config {
     pub join_leave_channel: ChannelId,
     pub deleted_msg_channel: ChannelId,
     pub audit_log_channel: ChannelId,
+    pub log_unknown_messages: bool,
     pub edited_msg_distance: u32,
     pub bulk_delete_min_length: usize,
     pub bulk_delete_max_length: usize,

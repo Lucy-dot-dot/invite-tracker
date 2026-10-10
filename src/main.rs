@@ -81,11 +81,19 @@ async fn clean_stale_guild_commands(guild_id: GuildId, http: &Http) {
                 names.join(", ")
             );
             if let Err(e) = guild_id.set_commands(http, &[]).await {
-                log::error!("Failed to remove stale commands in guild {}: {}", guild_id, e);
+                log::error!(
+                    "Failed to remove stale commands in guild {}: {}",
+                    guild_id,
+                    e
+                );
             }
         }
         Ok(_) => {}
-        Err(e) => log::error!("Failed to fetch application commands for guild {}: {}", guild_id, e),
+        Err(e) => log::error!(
+            "Failed to fetch application commands for guild {}: {}",
+            guild_id,
+            e
+        ),
     }
 }
 
@@ -679,6 +687,10 @@ impl EventHandler for Handler {
 
                     (None, None)
                 };
+
+                if (!self.config.log_unknown_messages) && user_id.is_none() {
+                    return;
+                }
 
                 let msg = messages::messages::build_deleted_message(
                     user,

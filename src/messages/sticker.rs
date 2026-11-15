@@ -63,7 +63,7 @@ pub async fn build_sticker_message(
     if let Some(sticker) = sticker
         && let Some(url) = sticker.image_url()
     {
-        embed = embed.thumbnail(url, None);
+        embed = embed.image(url, None);
     }
 
     Some(CreateMessage::new().embed(embed))

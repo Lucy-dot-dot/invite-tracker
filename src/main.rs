@@ -17,8 +17,8 @@ use log4rs::encode::pattern::PatternEncoder;
 use serenity::Client;
 use serenity::all::audit_log::Action;
 use serenity::all::{
-    AttachmentFlags, ChannelId, Command, Context, CreateMessage, FullEvent, GuildId, Http, Invite,
-    MemberAction, Message, UserId,
+    Attachment, AttachmentFlags, ChannelId, Command, Context, CreateMessage, Embed, FullEvent,
+    GuildId, Http, Invite, MemberAction, Message, StickerItem, UserId,
 };
 use serenity::futures::StreamExt;
 use serenity::prelude::{EventHandler, GatewayIntents};
@@ -147,33 +147,29 @@ impl Handler {
         }
     }
 
-    fn format_stickers(&self, message: &Message) -> Option<String> {
+    fn format_stickers(&self, sticker_items: &[StickerItem]) -> Vec<String> {
         // Actual stickers
-        let mut urls: Vec<String> = message
-            .sticker_items
+        let urls: Vec<String> = sticker_items
             .iter()
             .filter_map(|sticker| sticker.image_url())
             .collect();
 
-        // GIFs, only get the thumbnail url as it's static and can't be in any weird formats
-        urls.extend(
-            message
-                .embeds
-                .iter()
-                .filter_map(|embed| embed.thumbnail.as_ref())
-                .map(|thumbnail| thumbnail.url.to_string()),
-        );
-
-        if urls.is_empty() {
-            None
-        } else {
-            Some(urls.join("\n"))
-        }
+        return urls;
     }
 
-    fn format_attachments(&self, message: &Message) -> Option<String> {
-        let urls: Vec<String> = message
-            .attachments
+    fn format_embeds(&self, embeds: &[Embed]) -> Vec<String> {
+        // GIFs, only get the thumbnail url as it's static and can't be in any weird formats
+        let urls = embeds
+            .iter()
+            .filter_map(|embed| embed.thumbnail.as_ref())
+            .map(|thumbnail| thumbnail.url.to_string())
+            .collect();
+
+        return urls;
+    }
+
+    fn format_attachments(&self, attachments: &[Attachment]) -> Vec<String> {
+        let urls: Vec<String> = attachments
             .iter()
             .filter(|attachement| attachement.size < self.config.max_upload_size)
             .map(|attachment| {
@@ -192,10 +188,7 @@ impl Handler {
             })
             .collect();
 
-        if urls.is_empty() {
-            return None;
-        }
-        Some(urls.join("\n"))
+        return urls;
     }
 
     async fn insert_members_batch(&self, batch: &[(i64, i64)]) {
@@ -509,10 +502,37 @@ impl EventHandler for Handler {
                 send_message(msg, &ctx, self.config.join_leave_channel).await;
             }
             FullEvent::Message { new_message, .. } => {
-                let attachments_string = self.format_attachments(new_message);
-                let stickers_string = self.format_stickers(new_message);
+                let mut content = new_message.content.as_str().to_string();
 
-                let content = new_message.content.as_str();
+                let mut attachments = self.format_attachments(&new_message.attachments);
+                let mut stickers = self.format_stickers(&new_message.sticker_items);
+                stickers.extend(self.format_embeds(&new_message.embeds));
+
+                // if message is a forward, handle it separately
+                if content.is_empty()
+                    && let Some(reference) = &new_message.message_reference
+                {
+                    content = if let Some(referenced_guild) = reference.guild_id {
+                        format!(
+                            "> **[↱ Forwarded from](https://discord.com/channels/{}/{}/{:?})**\n",
+                            referenced_guild, reference.channel_id, reference.message_id
+                        )
+                    } else {
+                        "> **↱ Forwarded**\n".to_string()
+                    };
+
+                    for snapshot in &new_message.message_snapshots {
+                        content.push_str("\n");
+                        content.push_str(snapshot.content.as_str());
+                        attachments.extend(self.format_attachments(&snapshot.attachments));
+                        stickers.extend(self.format_stickers(&snapshot.sticker_items));
+                        stickers.extend(self.format_embeds(&snapshot.embeds));
+                    }
+                }
+
+                let attachments_string = (!attachments.is_empty()).then(|| attachments.join("\n"));
+
+                let stickers_string = (!stickers.is_empty()).then(|| stickers.join("\n"));
 
                 if let Err(e) = sqlx::query(
                     "INSERT INTO messages (id, user_id, message, attachments, stickers) \

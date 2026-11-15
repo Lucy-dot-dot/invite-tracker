@@ -12,7 +12,7 @@ use serenity::all::{
     Change::{self},
     Channel, ChannelAction, ChannelFlags, ChannelId, ChannelOverwriteAction, ChannelType, Context,
     CreateEmbed, CreateMessage, EntityType, GuildId, PermissionOverwrite, PermissionOverwriteType,
-    Permissions, ThreadAction, User, UserId, VideoQualityMode,
+    Permissions, ThreadAction, ThreadId, User, UserId, VideoQualityMode,
     audit_log::Action,
 };
 use std::fmt::Write;
@@ -33,18 +33,29 @@ pub async fn build_channel_message(
 
     let user_str = format_user(&user, user_id);
 
-    let channel_id = ChannelId::new(target_id.get());
-    let channel = channel_id
-        .to_guild_channel(&ctx.http, Some(*guild_id))
-        .await
-        .ok();
+    let (channel_str, channel_type) = match entry.action {
+        Action::Thread(_) => {
+            let thread_id = ThreadId::new(target_id.get());
+            let thread = thread_id.to_thread(&ctx.http, Some(*guild_id)).await.ok();
 
-    let channel_type = channel
-        .as_ref()
-        .map(|c| c.base.kind.name().replace("_", " "))
-        .unwrap_or_else(|| "channel".to_string());
+            (
+                format_channel(&thread.map(Channel::GuildThread), thread_id),
+                "thread",
+            )
+        }
+        _ => {
+            let channel_id = ChannelId::new(target_id.get());
+            let channel = channel_id
+                .to_guild_channel(&ctx.http, Some(*guild_id))
+                .await
+                .ok();
 
-    let channel_str = format_channel(&channel.map(Channel::Guild), channel_id);
+            (
+                format_channel(&channel.map(Channel::Guild), channel_id),
+                "channel",
+            )
+        }
+    };
 
     let (action, colour) = match entry.action {
         Action::Channel(ChannelAction::Create) | Action::Thread(ThreadAction::Create) => {

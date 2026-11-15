@@ -5,8 +5,8 @@ edition = "2024"
 
 [dependencies]
 serenity = {
-    git = "https://github.com/serenity-rs/serenity",
-    branch = "next",
+    git = "https://github.com/serenity-rs/serenity.git",
+    rev = "c84604143ccdf9ffa62d609ed191ab5900c8576d",
     default-features = false,
     features = [
         "gateway",
@@ -16,13 +16,13 @@ serenity = {
         "temp_cache"
     ]
 }
-tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
-toml = "1.1.2"
+tokio = { version = "1.54.1", features = ["macros", "rt-multi-thread"] }
+toml = "1.1.8+spec-1.1.0"
 serde = { version = "1", features = ["derive"] }
 log = "0.4"
 log4rs = "1"
 sqlx = { version =  "0.9.0", features = ["runtime-tokio", "postgres", "uuid"] }
 time = { version = "0.3.53", features = ["macros"]}
 stringmetrics = "2.2.2"
-reqwest = "0.13.4"
-serde_json = "1.0.151"
+reqwest = "0.13.5"
+serde_json = "1.0.154"

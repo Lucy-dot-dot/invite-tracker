@@ -18,7 +18,7 @@ use serenity::Client;
 use serenity::all::audit_log::Action;
 use serenity::all::{
     Attachment, AttachmentFlags, ChannelId, Command, Context, CreateMessage, Embed, FullEvent,
-    GuildId, Http, Invite, MemberAction, Message, StickerItem, UserId,
+    GuildId, Http, Invite, MemberAction, StickerItem, UserId,
 };
 use serenity::futures::StreamExt;
 use serenity::prelude::{EventHandler, GatewayIntents};
@@ -514,11 +514,11 @@ impl EventHandler for Handler {
                 {
                     content = if let Some(referenced_guild) = reference.guild_id {
                         format!(
-                            "> **[↱ Forwarded from](https://discord.com/channels/{}/{}/{:?})**\n",
-                            referenced_guild, reference.channel_id, reference.message_id
+                            "> **[↱ Forwarded from](https://discord.com/channels/{}/{}/{})**",
+                            referenced_guild, reference.channel_id, reference.message_id.map_or(String::new(), |v| v.to_string())
                         )
                     } else {
-                        "> **↱ Forwarded**\n".to_string()
+                        "> **↱ Forwarded**".to_string()
                     };
 
                     for snapshot in &new_message.message_snapshots {

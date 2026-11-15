@@ -168,13 +168,20 @@ pub fn build_leave_message(
         None => "*no join record found.*".to_string(),
     };
 
-    let message_count = if let Some(message_count) = message_count {
-        format!("\n**Sent** {message_count} **messages** in the past 30d",)
+    let message_count = if let Some(message_count) = message_count
+        && message_count > 0
+    {
+        format!(
+            "\n**Sent** {message_count} **message{}** in the past 30d",
+            if message_count == 1 { "" } else { "s" }
+        )
     } else {
         String::new()
     };
 
-    let leave_count = if let Some(join_amount) = join_amount && join_amount > 0{
+    let leave_count = if let Some(join_amount) = join_amount
+        && join_amount > 0
+    {
         format!(
             "\n**Previously left** {join_amount} **time{}**",
             plural!(join_amount)

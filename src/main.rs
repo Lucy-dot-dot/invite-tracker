@@ -515,7 +515,11 @@ impl EventHandler for Handler {
                     content = if let Some(referenced_guild) = reference.guild_id {
                         format!(
                             "> **[↱ Forwarded from](https://discord.com/channels/{}/{}/{})**",
-                            referenced_guild, reference.channel_id, reference.message_id.map_or(String::new(), |v| v.to_string())
+                            referenced_guild,
+                            reference.channel_id,
+                            reference
+                                .message_id
+                                .map_or(String::new(), |v| v.to_string())
                         )
                     } else {
                         "> **↱ Forwarded**".to_string()

@@ -629,6 +629,7 @@ impl EventHandler for Handler {
                         guild,
                         event.message.id,
                         old_message,
+                        new_message.to_string(),
                         edits,
                     );
 
